@@ -359,7 +359,7 @@ elif os.path.isfile(os.path.join(args.logdir, 'recent.log')):
 
 	# Load checkpoint
 	print(args.logdir)
-	model.load_state_dict(torch.load(os.path.join(args.logdir, 'model.pth')))
+	model.load_state_dict(torch.load(os.path.join(args.logdir, 'best_model.pth')))
 	# optimizer.load_state_dict(torch.load(os.path.join(args.logdir, 'best_optim.pth')))
 
 # Log args
