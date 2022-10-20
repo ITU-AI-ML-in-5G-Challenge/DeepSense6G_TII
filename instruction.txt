@@ -1,0 +1,3 @@
+data1,model1,train1 are for lidar and image.
+data2, model2,train2 are for lidar,image, and radar angle.
+data2_seq, model2_seq, and train2_seq are for sequence and gps.
