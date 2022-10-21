@@ -48,6 +48,8 @@ class CARLA_Data(Dataset):
             add_lidars.append(self.dataframe['unit1_lidar_'+stri][index])
             add_radars1 = self.dataframe['unit1_radar_'+stri][index]
             add_radars.append(add_radars1[:29] + '_ang' + add_radars1[29:])
+            #add_radars.append(add_radars1[:29] + '_vel' + add_radars1[29:])
+            #add_radars.append(add_radars1[:29] + '_cube' + add_radars1[29:])
         beamidx=self.dataframe['unit1_beam'][index]-1
         x_data = range(max(beamidx-5,0),min(beamidx+5,63)+1)
         y_data = stats.norm.pdf(x_data, beamidx, 0.5)
@@ -103,6 +105,8 @@ class CARLA_Data_Test(Dataset):
             add_lidars.append(self.dataframe['unit1_lidar_'+stri][index])
             add_radars1 = self.dataframe['unit1_radar_'+stri][index]
             add_radars.append(add_radars1[:29] + '_ang' + add_radars1[29:])
+            #add_radars.append(add_radars1[:29] + '_vel' + add_radars1[29:])
+            #add_radars.append(add_radars1[:29] + '_cube' + add_radars1[29:])
         # beamidx=self.dataframe['unit1_beam'][index]-1
         # x_data = range(max(beamidx-5,0),min(beamidx+5,63)+1)
         # y_data = stats.norm.pdf(x_data, beamidx, 0.5)

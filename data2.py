@@ -39,7 +39,10 @@ class CARLA_Data(Dataset):
         add_lidars = self.dataframe['unit1_lidar_5'][index]
         add_radars = self.dataframe['unit1_radar_5'][index]
         add_radars_split = add_radars.split(file_sep)
-        add_radars_split[-2]=add_radars_split[-2]+'_ang'
+        #add_radars_split[-2]=add_radars_split[-2]+'_ang'
+        add_radars_split[-2]=add_radars_split[-2]+'_vel'
+        #add_radars_split[-2]=add_radars_split[-2]+'_cube'
+
         add_radars = file_sep.join(add_radars_split)
         
         beamidx=self.dataframe['unit1_beam'][index]-1
@@ -87,7 +90,9 @@ class CARLA_Data_Test(Dataset):
         add_lidars = self.dataframe['unit1_lidar_5'][index]
         add_radars = self.dataframe['unit1_radar_5'][index]
         add_radars_split = add_radars.split(file_sep)
-        add_radars_split[-2]=add_radars_split[-2]+'_ang'
+        #add_radars_split[-2]=add_radars_split[-2]+'_ang'
+        add_radars_split[-2]=add_radars_split[-2]+'_vel'
+        #add_radars_split[-2]=add_radars_split[-2]+'_cube'
         add_radars = file_sep.join(add_radars_split)
         
         for i in range(self.seq_len):
