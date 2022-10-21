@@ -59,7 +59,7 @@ class Engine(object):
 		self.bestval = 0
 		# self.criterion = torch.nn.CrossEntropyLoss(weight=class_weights,reduction='mean')
 		# self.criterion = torch.nn.CrossEntropyLoss( reduction='mean')
-		self.criterion =  FocalLoss(gamma= 2)
+		self.criterion =  FocalLoss(gamma= 0)
 		
 		# self.criterion = torchvision.ops.sigmoid_focal_loss(reduction='mean')
 
@@ -254,38 +254,72 @@ class Engine(object):
 			tqdm.write('====== Overwrote best model ======>')
 
 
-class FocalLoss(nn.Module):
-    def __init__(self, gamma=0, alpha=None, size_average=True):
-        super(FocalLoss, self).__init__()
+# class FocalLoss(nn.Module):
+#      def __init__(self, gamma=0, alpha=None, size_average=True):
+#          super(FocalLoss, self).__init__()
+#          self.gamma = gamma
+#          self.alpha = alpha
+#          if isinstance(alpha,(float,int,int)): self.alpha = torch.Tensor([alpha,1-alpha])
+#          if isinstance(alpha,list): self.alpha = torch.Tensor(alpha)
+#          self.size_average = size_average
+
+#      def forward(self, input, target):
+# #         # if input.dim()>2:
+# #         #     input = input.view(input.size(0),input.size(1),-1)  # N,C,H,W => N,C,H*W
+# #         #     input = input.transpose(1,2)    # N,C,H*W => N,H*W,C
+# #         #     input = input.contiguous().view(-1,input.size(2))   # N,H*W,C => N*H*W,C
+# #         # target = target.view(-1,1)
+
+#          logpt = F.log_softmax(input)
+#          # logpt = logpt.gather(1,target)
+#          logpt = logpt.gather(1, target.type(torch.int64))
+
+#          logpt = logpt.view(-1)
+#          pt = Variable(logpt.data.exp())
+
+#          if self.alpha is not None:
+#              if self.alpha.type()!=input.data.type():
+#                  self.alpha = self.alpha.type_as(input.data)
+#              at = self.alpha.gather(0,target.data.view(-1))
+#              logpt = logpt * Variable(at)
+
+#          loss = -1 * (1-pt)**self.gamma * logpt
+#          if self.size_average: return loss.mean()
+#          else: return loss.sum()
+
+
+class FocalLoss(nn.modules.loss._WeightedLoss):
+    def __init__(self, weight=None, gamma=2,reduction='mean'):
+        super(FocalLoss, self).__init__(weight,reduction=reduction)
         self.gamma = gamma
-        self.alpha = alpha
-        if isinstance(alpha,(float,int,int)): self.alpha = torch.Tensor([alpha,1-alpha])
-        if isinstance(alpha,list): self.alpha = torch.Tensor(alpha)
-        self.size_average = size_average
+        self.weight = weight #weight parameter will act as the alpha parameter to balance class weights
 
     def forward(self, input, target):
-        # if input.dim()>2:
-        #     input = input.view(input.size(0),input.size(1),-1)  # N,C,H,W => N,C,H*W
-        #     input = input.transpose(1,2)    # N,C,H*W => N,H*W,C
-        #     input = input.contiguous().view(-1,input.size(2))   # N,H*W,C => N*H*W,C
-        # target = target.view(-1,1)
 
-        logpt = F.log_softmax(input)
-        # logpt = logpt.gather(1,target)
-        logpt = logpt.gather(1, target.type(torch.int64))
+        ce_loss = F.cross_entropy(input, target,reduction=self.reduction,weight=self.weight) 
+        pt = torch.exp(-ce_loss)
+        focal_loss = ((1 - pt) ** self.gamma * ce_loss).mean()
+        return focal_loss
 
-        logpt = logpt.view(-1)
-        pt = Variable(logpt.data.exp())
+# class FocalLoss(nn.Module):
+    
+#     def __init__(self, weight=None, 
+#                  gamma=2., reduction='none'):
+#         nn.Module.__init__(self)
+#         self.weight = weight
+#         self.gamma = gamma
+#         self.reduction = reduction
+        
+#     def forward(self, input_tensor, target_tensor):
+#         log_prob = F.log_softmax(input_tensor, dim=-1)
+#         prob = torch.exp(log_prob)
+#         return F.nll_loss(
+#             ((1 - prob) ** self.gamma) * log_prob, 
+#             target_tensor, 
+#             weight = self.weight,
+#             reduction = self.reduction
+#         )
 
-        if self.alpha is not None:
-            if self.alpha.type()!=input.data.type():
-                self.alpha = self.alpha.type_as(input.data)
-            at = self.alpha.gather(0,target.data.view(-1))
-            logpt = logpt * Variable(at)
-
-        loss = -1 * (1-pt)**self.gamma * logpt
-        if self.size_average: return loss.mean()
-        else: return loss.sum()
 
 def save_pred_to_csv(y_pred, top_k=[1, 2, 3], target_csv='beam_pred.csv'):
 	"""
@@ -350,7 +384,7 @@ config = GlobalConfig()
 # trainval_root= '/home/tiany0c/Downloads/MultiModeBeamforming/Adaptation_dataset_multi_modal/'
 
 trainval_root='/efs/data/Multi_Modal/'
-# os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 train_root_csv='ml_challenge_dev_multi_modal.csv'
 # val_root='/home/tiany0c/Downloads/MultiModeBeamforming/Adaptation_dataset_multi_modal/'
 val_root='/efs/data/Adaptation_dataset_multi_modal/'
@@ -376,7 +410,7 @@ dataloader_test = DataLoader(test_set, batch_size=args.batch_size, shuffle=False
 # Model
 
 model = TransFuser(config, args.device)
-# model = torch.nn.DataParallel(model, device_ids = [0,1])
+model = torch.nn.DataParallel(model, device_ids = [0])
 optimizer = optim.AdamW(model.parameters(), lr=args.lr)
 scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
 trainer = Engine()
