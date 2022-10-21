@@ -41,6 +41,7 @@ class CARLA_Data(Dataset):
         add_lidars = []
         add_radars = []
         instanceidx=['1','2','5']
+        # instanceidx=['1','2', '3', '4', '5']
 
         for stri in instanceidx:
             add_fronts.append(self.dataframe['unit1_rgb_'+stri][index])
@@ -73,6 +74,8 @@ class CARLA_Data_Test(Dataset):
         self.dataframe = pd.read_csv(root+root_csv)
         self.root=root
         self.seq_len = config.seq_len
+        self.gps_data = []
+        self.pos_input_normalized = Normalize_loc(root,self.dataframe)
 
     def __len__(self):
         """Returns the length of the dataset. """
@@ -83,24 +86,40 @@ class CARLA_Data_Test(Dataset):
         data = dict()
         data['fronts'] = []
         data['lidars'] = []
-        data['idx'] = index
+        # data['beam'] = []
+        # data['beamidx'] = []
         data['radars'] = []
-
+        data['gps'] = self.pos_input_normalized[index,:,:]
         PT=[]
         file_sep = '/'
-        add_fronts = self.dataframe['unit1_rgb_5'][index]
-        add_lidars = self.dataframe['unit1_lidar_5'][index]
-        add_radars = self.dataframe['unit1_radar_5'][index]
-        add_radars_split = add_radars.split(file_sep)
-        add_radars_split[-2]=add_radars_split[-2]+'_ang'
-        add_radars = file_sep.join(add_radars_split)
-        
+        add_fronts = []
+        add_lidars = []
+        add_radars = []
+        instanceidx=['1','2','5']
+        # instanceidx=['1','2', '3', '4', '5']
+
+        for stri in instanceidx:
+            add_fronts.append(self.dataframe['unit1_rgb_'+stri][index])
+            add_lidars.append(self.dataframe['unit1_lidar_'+stri][index])
+            add_radars1 = self.dataframe['unit1_radar_'+stri][index]
+            add_radars.append(add_radars1[:29] + '_ang' + add_radars1[29:])
+        # beamidx=self.dataframe['unit1_beam'][index]-1
+        # x_data = range(max(beamidx-5,0),min(beamidx+5,63)+1)
+        # y_data = stats.norm.pdf(x_data, beamidx, 0.5)
+        # data_beam=np.zeros((64))
+        # data_beam[x_data]=y_data*1.25
+        self.seq_len = len(instanceidx)
+
         for i in range(self.seq_len):
-            data['fronts'].append(torch.from_numpy(np.transpose(np.array(Image.open(self.root+add_fronts).resize((256,256))),(2,0,1))))
-            data['radars'].append(torch.from_numpy(np.expand_dims(np.load(self.root+add_radars),0)))
-            PT = np.asarray(o3d.io.read_point_cloud(self.root+add_lidars).points)
+            data['fronts'].append(torch.from_numpy(np.transpose(np.array(Image.open(self.root+add_fronts[i]).resize((256,256))),(2,0,1))))
+            data['radars'].append(torch.from_numpy(np.expand_dims(np.load(self.root+add_radars[i]),0)))
+            #lidar data
+            PT = np.asarray(o3d.io.read_point_cloud(self.root+add_lidars[i]).points)
             PT = lidar_to_histogram_features(PT)
             data['lidars'].append(PT)
+            # data['beam'].append(data_beam)
+            # data['beamidx'].append(beamidx)
+            
         return data
 
 def lidar_to_histogram_features(lidar, crop=256):

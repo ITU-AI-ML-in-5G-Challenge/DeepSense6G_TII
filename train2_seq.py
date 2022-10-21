@@ -28,7 +28,7 @@ parser.add_argument('--epochs', type=int, default=70, help='Number of train epoc
 parser.add_argument('--lr', type=float, default=2e-4, help='Learning rate.')
 parser.add_argument('--val_every', type=int, default=1, help='Validation frequency (epochs).')
 parser.add_argument('--shuffle_every', type=int, default=6, help='Shuffle the dataset frequency (epochs).')
-parser.add_argument('--batch_size', type=int, default=24, help='Batch size')
+parser.add_argument('--batch_size', type=int, default=24, help='Batch size')	# default=24
 parser.add_argument('--logdir', type=str, default='log', help='Directory to log data to.')
 
 args = parser.parse_args()
@@ -191,13 +191,16 @@ class Engine(object):
 				fronts = []
 				lidars = []
 				radars = []
+				gps = data['gps'].to(args.device, dtype=torch.float32)
+
 				for i in range(config.seq_len):
 					fronts.append(data['fronts'][i].to(args.device, dtype=torch.float32))
 					lidars.append(data['lidars'][i].to(args.device, dtype=torch.float32))
 					radars.append(data['radars'][i].to(args.device, dtype=torch.float32))
 
 				velocity = torch.zeros((data['fronts'][0].shape[0])).to(args.device, dtype=torch.float32)
-				pred_beams = model(fronts, lidars, radars, velocity)
+				pred_beams = model(fronts, lidars, radars, gps)
+				# pred_beams = model(fronts, lidars, radars, velocity)
 				pred_beam_all.append(torch.argsort(pred_beams, dim=1, descending=True).cpu().numpy())
 				sm=torch.nn.Softmax(dim=1)
 				beam_confidence=torch.max(sm(pred_beams), dim=1)
@@ -207,7 +210,7 @@ class Engine(object):
 			pred_beam_confidence = np.squeeze(np.concatenate(pred_beam_confidence, 0))
 			save_pred_to_csv(pred_beam_all, top_k=[1, 2, 3], target_csv='beam_pred.csv')
 			df = pd.DataFrame(data=pred_beam_confidence)
-			df.to_csv('beam_pred_confidence323334.csv')
+			df.to_csv('beam_pred_confidence_seq.csv')
 
 	def save(self):
 		save_best = False
@@ -250,10 +253,10 @@ class Engine(object):
 			torch.save(model.state_dict(), os.path.join(args.logdir, 'best_model.pth'))
 			torch.save(optimizer.state_dict(), os.path.join(args.logdir, 'best_optim.pth'))
 			tqdm.write('====== Overwrote best model ======>')
-		else:
-			model.load_state_dict(torch.load(os.path.join(args.logdir, 'best_model.pth')))
-			optimizer.load_state_dict(torch.load(os.path.join(args.logdir, 'best_optim.pth')))
-			tqdm.write('====== Load the previous best model ======>')
+		# else:
+		# 	model.load_state_dict(torch.load(os.path.join(args.logdir, 'best_model.pth')))
+		# 	optimizer.load_state_dict(torch.load(os.path.join(args.logdir, 'best_optim.pth')))
+		# 	tqdm.write('====== Load the previous best model ======>')
 
 
 
@@ -303,18 +306,29 @@ def compute_DBA_score(y_pred, y_true, max_k=3, delta=5):
 		yk[k] = 1 - acc_avg_min_beam_dist / n_samples
 
 	return np.mean(yk)
+
+
 # Config
 config = GlobalConfig()
-os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
 # trainval_root='/home/tiany0c/Downloads/MultiModeBeamforming/0Multi_Modal/'
 # train_root_csv='ml_challenge_dev_multi_modal1.csv'
-trainval_root= '/home/tiany0c/Downloads/MultiModeBeamforming/Adaptation_dataset_multi_modal/'
+# trainval_root= '/home/tiany0c/Downloads/MultiModeBeamforming/Adaptation_dataset_multi_modal/'
+
+# trainval_root= '/efs/data/Multi_Modal/'
+# train_root_csv='ml_challenge_dev_multi_modal.csv'
+
+trainval_root='/efs/data/Adaptation_dataset_multi_modal/'
 train_root_csv='ml_challenge_data_adaptation_multi_modal.csv'
-val_root='/home/tiany0c/Downloads/MultiModeBeamforming/Adaptation_dataset_multi_modal/'
+
+# val_root='/home/tiany0c/Downloads/MultiModeBeamforming/Adaptation_dataset_multi_modal/'
+val_root='/efs/data/Adaptation_dataset_multi_modal/'
 val_root_csv='ml_challenge_data_adaptation_multi_modal.csv'
 
-test_root='/home/tiany0c/Downloads/MultiModeBeamforming/Multi_Modal_Test/'
+# test_root='/home/tiany0c/Downloads/MultiModeBeamforming/Multi_Modal_Test/'
+test_root='/efs/data/Multi_Modal_Test/'
 test_root_csv='ml_challenge_test_multi_modal.csv'
+
 # Data
 train_set = CARLA_Data(root=trainval_root, root_csv=train_root_csv, config=config)
 # train_set = CARLA_Data(root=test_root, root_csv=test_root_csv, config=config)
@@ -333,7 +347,9 @@ dataloader_test = DataLoader(test_set, batch_size=args.batch_size, shuffle=False
 # Model
 
 model = TransFuser(config, args.device)
-# model = torch.nn.DataParallel(model, device_ids = [1])
+# model = torch.nn.DataParallel(model, device_ids = [2, 3])
+model = torch.nn.DataParallel(model)
+
 optimizer = optim.AdamW(model.parameters(), lr=args.lr)
 # scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
 trainer = Engine()
@@ -364,6 +380,11 @@ elif os.path.isfile(os.path.join(args.logdir, 'recent.log')):
 	model.load_state_dict(torch.load(os.path.join(args.logdir, 'best_model.pth')))
 	# optimizer.load_state_dict(torch.load(os.path.join(args.logdir, 'best_optim.pth')))
 
+	# trainer.validate()
+	trainer.test()	# test
+
+
+
 # Log args
 with open(os.path.join(args.logdir, 'args.txt'), 'w') as f:
 	json.dump(args.__dict__, f, indent=2)
@@ -372,9 +393,12 @@ for epoch in range(trainer.cur_epoch, args.epochs):
 	
 	print('epoch:',epoch)
 	# print('lr', scheduler.get_lr())
-	trainer.train()
-	trainer.validate()
-	trainer.save()
+
+	# trainer.test()	# test
+
+	# trainer.train()
+	# trainer.validate()
+	# trainer.save()
 	# scheduler.step()
 
 	# torch.save(model.state_dict(), os.path.join(args.logdir, 'current_model.pth'))
