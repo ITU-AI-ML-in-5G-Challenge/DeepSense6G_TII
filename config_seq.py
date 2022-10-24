@@ -3,7 +3,7 @@ import os
 class GlobalConfig:
     """ base architecture configurations """
 	# Data
-    seq_len = 3 # input timesteps
+    seq_len = 5 # input timesteps
     pred_len = 4 # future waypoints predicted
 
     root_dir = '/home/tiany0c/Downloads/transfuser-cvpr2021/data/14_weathers_minimal_data/'

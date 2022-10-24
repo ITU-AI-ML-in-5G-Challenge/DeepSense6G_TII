@@ -1,13 +1,17 @@
 import argparse
 import json
-import os
+import os, sys
+
+os.environ["CUDA_VISIBLE_DEVICES"] = "0, 1, 2, 3"
+
+
 from tqdm import tqdm
 import pandas as pd
 
 import numpy as np
 import torch
 import torch.optim as optim
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, ConcatDataset
 from torch.utils.tensorboard import SummaryWriter
 import torch.nn.functional as F
 torch.backends.cudnn.benchmark = True
@@ -19,12 +23,13 @@ from data2_seq import CARLA_Data,CARLA_Data_Test
 import matplotlib.pyplot as plt
 import torchvision
 
+
 torch.cuda.empty_cache()
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--id', type=str, default='transfuser_seq', help='Unique experiment identifier.')
+parser.add_argument('--id', type=str, default='focal_loss_seqlen5', help='Unique experiment identifier.')
 parser.add_argument('--device', type=str, default='cuda', help='Device to use')
-parser.add_argument('--epochs', type=int, default=70, help='Number of train epochs.')
+parser.add_argument('--epochs', type=int, default=150, help='Number of train epochs.')
 parser.add_argument('--lr', type=float, default=2e-4, help='Learning rate.')
 parser.add_argument('--val_every', type=int, default=1, help='Validation frequency (epochs).')
 parser.add_argument('--shuffle_every', type=int, default=6, help='Shuffle the dataset frequency (epochs).')
@@ -55,7 +60,11 @@ class Engine(object):
 		self.DBA = []
 		self.bestval = 0
 		# self.criterion = torch.nn.CrossEntropyLoss(weight=class_weights,reduction='mean')
-		self.criterion = torch.nn.CrossEntropyLoss( reduction='mean')
+		# self.criterion = torch.nn.CrossEntropyLoss( reduction='mean')
+
+		# self.criterion = torch.nn.CrossEntropyLoss( reduction='none')
+		self.criterion =  FocalLoss(gamma= 2)
+
 		# self.criterion = torchvision.ops.sigmoid_focal_loss(reduction='mean')
 
 	def train(self):
@@ -89,7 +98,6 @@ class Engine(object):
 			# velocity=torch.zeros((data['fronts'][0].shape[0])).to(args.device, dtype=torch.float32)
 			pred_beams = model(fronts, lidars, radars, gps)
 
-
 			gt_beamidx = data['beamidx'][0].to(args.device, dtype=torch.long)
 			gt_beams = data['beam'][0].to(args.device, dtype=torch.float32)
 
@@ -99,6 +107,8 @@ class Engine(object):
 			# print(torch.argmax(pred_beams, dim=1) == gt_beamidx)
 
 			loss = self.criterion(pred_beams, gt_beams)
+			# loss = torch.sum(loss * data['loss_weight'].to(args.device, dtype=torch.float32))
+
 			gt_beam_all.append(data['beamidx'][0])
 
 			pred_beam_all.append(torch.argsort(pred_beams, dim=1, descending=True).cpu().numpy())
@@ -108,8 +118,7 @@ class Engine(object):
 			pbar.set_description(str(loss.item()))
 			num_batches += 1
 			optimizer.step()
-
-			writer.add_scalar('train_loss', loss.item(), self.cur_iter)
+			# writer.add_scalar('train_loss', loss.item(), self.cur_iter)
 			self.cur_iter += 1
 		pred_beam_all = np.squeeze(np.concatenate(pred_beam_all, 0))
 
@@ -117,10 +126,17 @@ class Engine(object):
 
 		curr_acc = compute_acc(pred_beam_all, gt_beam_all, top_k=[1, 2, 3])
 		DBA = compute_DBA_score(pred_beam_all, gt_beam_all, max_k=3, delta=5)
-		print('Train',curr_acc, running_acc*100/train_size,DBA)
+		print('Train top beam acc: ',curr_acc, ' DBA score: ',DBA)
 		loss_epoch = loss_epoch / num_batches
 		self.train_loss.append(loss_epoch)
 		self.cur_epoch += 1
+
+		writer.add_scalar('DBA_score_train', DBA, self.cur_epoch)
+
+		for i in range(len(curr_acc)):
+			writer.add_scalars('curr_acc_train', {'beam' + str(i):curr_acc[i]}, self.cur_epoch)
+		writer.add_scalar('curr_loss_train', loss_epoch, self.cur_epoch)
+
 
 	def validate(self):
 		model.eval()
@@ -131,6 +147,8 @@ class Engine(object):
 			wp_epoch = 0.
 			gt_beam_all=[]
 			pred_beam_all=[]
+
+			scenario_all = []
 
 			# Validation loop
 			for batch_num, data in enumerate(tqdm(dataloader_val), 0):
@@ -151,32 +169,51 @@ class Engine(object):
 				gt_beamidx = data['beamidx'][0].to(args.device, dtype=torch.long)
 				pred_beam_all.append(torch.argsort(pred_beams, dim=1, descending=True).cpu().numpy())
 				running_acc += (torch.argmax(pred_beams, dim=1) == gt_beamidx).sum().item()
-				wp_epoch += float(self.criterion(pred_beams, gt_beams))
+
+				loss = self.criterion(pred_beams, gt_beams)
+				# loss = torch.sum(loss * data['loss_weight'].to(args.device, dtype=torch.float32))
+
+				wp_epoch += float(loss.item())
+				# wp_epoch += float(self.criterion(pred_beams, gt_beams))
 				num_batches += 1
+				scenario_all.append(data['scenario'])
 
 			pred_beam_all=np.squeeze(np.concatenate(pred_beam_all,0))
 			gt_beam_all=np.squeeze(np.concatenate(gt_beam_all,0))
-			curr_acc31=compute_acc(pred_beam_all[:50,:], gt_beam_all[:50], top_k=[1,2,3])
-			DBA_score31=compute_DBA_score(pred_beam_all[:50,:], gt_beam_all[:50], max_k=3, delta=5)
-			curr_acc32 = compute_acc(pred_beam_all[50:75, :], gt_beam_all[50:75], top_k=[1, 2, 3])
-			DBA_score32 = compute_DBA_score(pred_beam_all[50:75, :], gt_beam_all[50:75], max_k=3, delta=5)
-			curr_acc33 = compute_acc(pred_beam_all[75:, :], gt_beam_all[75:], top_k=[1, 2, 3])
-			DBA_score33 = compute_DBA_score(pred_beam_all[75:, :], gt_beam_all[75:], max_k=3, delta=5)
-			print('31:', curr_acc31, DBA_score31)
-			print('32:', curr_acc32, DBA_score32)
-			print('33:', curr_acc33, DBA_score33)
+			scenario_all = np.squeeze(np.concatenate(scenario_all,0))
+
+			scenarios = ['scenario31', 'scenario32', 'scenario33', 'scenario34']
+			for s in scenarios:
+				beam_scenario_index = np.array(scenario_all) == s
+				if np.sum(beam_scenario_index) > 0:
+					curr_acc_s = compute_acc(pred_beam_all[beam_scenario_index], gt_beam_all[beam_scenario_index], top_k=[1,2,3])
+					DBA_score_s = compute_DBA_score(pred_beam_all[beam_scenario_index], gt_beam_all[beam_scenario_index], max_k=3, delta=5)
+					print(s, ' curr_acc: ', curr_acc_s, ' DBA_score: ', DBA_score_s)
+
+					for i in range(len(curr_acc_s)):
+						writer.add_scalars('curr_acc_val', {s + 'beam' + str(i):curr_acc_s[i]}, self.cur_epoch)
+					writer.add_scalars('DBA_score_val', {s:DBA_score_s}, self.cur_epoch)
+
+			# curr_acc31=compute_acc(pred_beam_all[:50,:], gt_beam_all[:50], top_k=[1,2,3])
+			# DBA_score31=compute_DBA_score(pred_beam_all[:50,:], gt_beam_all[:50], max_k=3, delta=5)
+			# curr_acc32 = compute_acc(pred_beam_all[50:75, :], gt_beam_all[50:75], top_k=[1, 2, 3])
+			# DBA_score32 = compute_DBA_score(pred_beam_all[50:75, :], gt_beam_all[50:75], max_k=3, delta=5)
+			# curr_acc33 = compute_acc(pred_beam_all[75:, :], gt_beam_all[75:], top_k=[1, 2, 3])
+			# DBA_score33 = compute_DBA_score(pred_beam_all[75:, :], gt_beam_all[75:], max_k=3, delta=5)
+			# print('31:', curr_acc31, DBA_score31)
+			# print('32:', curr_acc32, DBA_score32)
+			# print('33:', curr_acc33, DBA_score33)
 
 			curr_acc = compute_acc(pred_beam_all, gt_beam_all, top_k=[1,2,3])
 			DBA_score_val = compute_DBA_score(pred_beam_all, gt_beam_all, max_k=3, delta=5)
 			wp_loss = wp_epoch / float(num_batches)
 			tqdm.write(f'Epoch {self.cur_epoch:03d}, Batch {batch_num:03d}:' + f' Wp: {wp_loss:3.3f}')
-			print('Val',curr_acc,running_acc*100/val_size,DBA_score_val)
+			print('Val top beam acc: ',curr_acc, 'DBA score: ', DBA_score_val)
 
-
-
-
-			writer.add_scalar('val_loss', wp_loss, self.cur_epoch)
+			writer.add_scalars('DBA_score_val', {'scenario_all':DBA_score_val}, self.cur_epoch)
 			
+			writer.add_scalar('curr_loss_val', wp_loss, self.cur_epoch)
+
 			self.val_loss.append(wp_loss)
 			self.DBA.append(DBA_score_val)
 
@@ -253,11 +290,24 @@ class Engine(object):
 			torch.save(model.state_dict(), os.path.join(args.logdir, 'best_model.pth'))
 			torch.save(optimizer.state_dict(), os.path.join(args.logdir, 'best_optim.pth'))
 			tqdm.write('====== Overwrote best model ======>')
-		# else:
-		# 	model.load_state_dict(torch.load(os.path.join(args.logdir, 'best_model.pth')))
-		# 	optimizer.load_state_dict(torch.load(os.path.join(args.logdir, 'best_optim.pth')))
-		# 	tqdm.write('====== Load the previous best model ======>')
+		else:
+			model.load_state_dict(torch.load(os.path.join(args.logdir, 'best_model.pth')))
+			optimizer.load_state_dict(torch.load(os.path.join(args.logdir, 'best_optim.pth')))
+			tqdm.write('====== Load the previous best model ======>')
 
+
+class FocalLoss(torch.nn.modules.loss._WeightedLoss):
+    def __init__(self, weight=None, gamma=2):
+        super(FocalLoss, self).__init__(weight)
+        self.gamma = gamma
+        self.weight = weight #weight parameter will act as the alpha parameter to balance class weights
+
+    def forward(self, input, target):
+
+        ce_loss = F.cross_entropy(input, target,reduction='none',weight=self.weight) 
+        pt = torch.exp(-ce_loss)
+        focal_loss = ((1 - pt) ** self.gamma * ce_loss).mean()
+        return focal_loss
 
 
 def save_pred_to_csv(y_pred, top_k=[1, 2, 3], target_csv='beam_pred.csv'):
@@ -310,42 +360,63 @@ def compute_DBA_score(y_pred, y_true, max_k=3, delta=5):
 
 # Config
 config = GlobalConfig()
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
+
+# os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+
 # trainval_root='/home/tiany0c/Downloads/MultiModeBeamforming/0Multi_Modal/'
 # train_root_csv='ml_challenge_dev_multi_modal1.csv'
 # trainval_root= '/home/tiany0c/Downloads/MultiModeBeamforming/Adaptation_dataset_multi_modal/'
 
-# trainval_root= '/efs/data/Multi_Modal/'
-# train_root_csv='ml_challenge_dev_multi_modal.csv'
+trainval_root= '/efs/data/Multi_Modal/'
+train_root_csv='ml_challenge_dev_multi_modal.csv'
 
-trainval_root='/efs/data/Adaptation_dataset_multi_modal/'
-train_root_csv='ml_challenge_data_adaptation_multi_modal.csv'
+# trainval_root='/efs/data/Adaptation_dataset_multi_modal/'
+# train_root_csv='ml_challenge_data_adaptation_multi_modal.csv'
 
 # val_root='/home/tiany0c/Downloads/MultiModeBeamforming/Adaptation_dataset_multi_modal/'
 val_root='/efs/data/Adaptation_dataset_multi_modal/'
 val_root_csv='ml_challenge_data_adaptation_multi_modal.csv'
 
-# test_root='/home/tiany0c/Downloads/MultiModeBeamforming/Multi_Modal_Test/'
+# # test_root='/home/tiany0c/Downloads/MultiModeBeamforming/Multi_Modal_Test/'
 test_root='/efs/data/Multi_Modal_Test/'
 test_root_csv='ml_challenge_test_multi_modal.csv'
 
+# test_root='/efs/data/Multi_Modal/'
+# test_root_csv='ml_challenge_dev_multi_modal.csv'
+
 # Data
-train_set = CARLA_Data(root=trainval_root, root_csv=train_root_csv, config=config)
 # train_set = CARLA_Data(root=test_root, root_csv=test_root_csv, config=config)
-val_set = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config)
+
+development_set = CARLA_Data(root=trainval_root, root_csv=train_root_csv, config=config)	# development dataset 11k samples
+adaptation_set = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config)	# adaptation dataset 100 samples
+
+# # split the adaptation set
+# train_subset_size = int(0.8 * len(adaptation_set))
+# train_subset, val_set = torch.utils.data.random_split(adaptation_set, [train_subset_size, len(adaptation_set) - train_subset_size])
+
+train_set = ConcatDataset([development_set, adaptation_set])
+
+# # For testing small dataset
+# train_set, _ = torch.utils.data.random_split(train_set, [100, len(train_set) - 100])
+
+
+val_set = adaptation_set
+
 test_set = CARLA_Data_Test(root=test_root, root_csv=test_root_csv, config=config)
-train_size, val_size= len(train_set), len(val_set)
+
 # train_size = int(0.01 * len(train_set))
 # train_set, _= torch.utils.data.random_split(train_set, [train_size, len(train_set) - train_size])
-print(len(train_set),len(val_set) )
+
+train_size = len(train_set)
+val_size = len(val_set)
+
+print('train_set:', len(train_set),'val_set:', len(val_set), 'test_set:', len(test_set))
 dataloader_train = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=8, pin_memory=True)
 dataloader_val = DataLoader(val_set, batch_size=args.batch_size, shuffle=False, num_workers=8, pin_memory=False)
 dataloader_test = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=8, pin_memory=False)
 
 
-
 # Model
-
 model = TransFuser(config, args.device)
 # model = torch.nn.DataParallel(model, device_ids = [2, 3])
 model = torch.nn.DataParallel(model)
@@ -376,12 +447,16 @@ elif os.path.isfile(os.path.join(args.logdir, 'recent.log')):
 	trainer.val_loss = log_table['val_loss']
 	trainer.DBA = log_table['DBA']
 
-	# Load checkpoint
-	model.load_state_dict(torch.load(os.path.join(args.logdir, 'best_model.pth')))
-	# optimizer.load_state_dict(torch.load(os.path.join(args.logdir, 'best_optim.pth')))
+
+	# # FOR TESTING ONLY
+
+	# # Load checkpoint
+	# model.load_state_dict(torch.load(os.path.join(args.logdir, 'best_model.pth')))
+	# # optimizer.load_state_dict(torch.load(os.path.join(args.logdir, 'best_optim.pth')))
 
 	# trainer.validate()
-	trainer.test()	# test
+	# trainer.test()	# test
+	# sys.exit()
 
 
 
@@ -396,9 +471,10 @@ for epoch in range(trainer.cur_epoch, args.epochs):
 
 	# trainer.test()	# test
 
-	# trainer.train()
-	# trainer.validate()
-	# trainer.save()
+	trainer.train()
+	trainer.validate()
+	trainer.save()
+
 	# scheduler.step()
 
 	# torch.save(model.state_dict(), os.path.join(args.logdir, 'current_model.pth'))

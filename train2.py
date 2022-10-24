@@ -69,7 +69,6 @@ class Engine(object):
 		self.DBA = []
 		self.bestval = 0
 		# self.criterion = torch.nn.CrossEntropyLoss(weight=class_weights,reduction='mean')
-
 		# # self.criterion = torch.nn.CrossEntropyLoss( reduction='mean')
 		# self.criterion =  FocalLoss(gamma= 0)
 		#
@@ -80,6 +79,7 @@ class Engine(object):
 		elif args.loss == 'focal':
 			# self.criterion =  FocalLoss(gamma= 2)
 			self.criterion = FocalLoss1()
+
 
 	def train(self):
 		loss_epoch = 0.

@@ -35,13 +35,16 @@ class CARLA_Data(Dataset):
         data['beamidx'] = []
         data['radars'] = []
         data['gps'] = self.pos_input_normalized[index,:,:]
+        data['scenario'] = []
+        data['loss_weight'] = []
+
         PT=[]
         file_sep = '/'
         add_fronts = []
         add_lidars = []
         add_radars = []
-        instanceidx=['1','2','5']
-        # instanceidx=['1','2', '3', '4', '5']
+        # instanceidx=['1','2','5']
+        instanceidx=['1','2', '3', '4', '5']
 
         for stri in instanceidx:
             add_fronts.append(self.dataframe['unit1_rgb_'+stri][index])
@@ -56,6 +59,18 @@ class CARLA_Data(Dataset):
         data_beam=np.zeros((64))
         data_beam[x_data]=y_data*1.25
         self.seq_len = len(instanceidx)
+
+        # check which scenario is the data sample associated 
+        scenarios = ['scenario31', 'scenario32', 'scenario33', 'scenario34']
+        loss_weights = [1.0, 1.0, 1.0, 1.0]
+        # loss_weights = [227.2727, 3.5804, 2.9112, 2.6824]
+
+        for i in range(len(scenarios)):
+            s = scenarios[i]
+            if s in self.dataframe['unit1_rgb_5'][index]:
+                data['scenario'] = s
+                data['loss_weight'] = loss_weights[i]
+                break
 
         for i in range(self.seq_len):
             data['fronts'].append(torch.from_numpy(np.transpose(np.array(Image.open(self.root+add_fronts[i]).resize((256,256))),(2,0,1))))
@@ -97,8 +112,8 @@ class CARLA_Data_Test(Dataset):
         add_fronts = []
         add_lidars = []
         add_radars = []
-        instanceidx=['1','2','5']
-        # instanceidx=['1','2', '3', '4', '5']
+        # instanceidx=['1','2','5']
+        instanceidx=['1','2', '3', '4', '5']
 
         for stri in instanceidx:
             add_fronts.append(self.dataframe['unit1_rgb_'+stri][index])
@@ -125,6 +140,7 @@ class CARLA_Data_Test(Dataset):
             # data['beamidx'].append(beamidx)
             
         return data
+        
 
 def lidar_to_histogram_features(lidar, crop=256):
     """
