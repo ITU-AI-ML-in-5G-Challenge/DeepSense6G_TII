@@ -23,6 +23,8 @@ class CARLA_Data(Dataset):
         self.pos_input_normalized = Normalize_loc(root,self.dataframe)
         self.test = test
         self.add_velocity = config.add_velocity
+        self.add_mask = config.add_mask
+        self.enhanced = config.enhanced
 
     def __len__(self):
         """Returns the length of the dataset. """
@@ -70,6 +72,21 @@ class CARLA_Data(Dataset):
                 break
 
         for i in range(self.seq_len):
+            if 'scenario31' in add_fronts[i] or 'scenario32' in add_fronts[i]:
+                imgs = np.array(Image.open(self.root + add_fronts[i]).resize((256, 256)))
+                seg = np.array(Image.open(self.root+add_fronts[i][:30]+'_seg'+add_fronts[i][30:]).resize((256,256)))
+                imgs = cv2.addWeighted(imgs, 0.8, seg, 0.2, 0)
+            else:
+                if self.add_mask & self.enhanced:
+                    raise Exception("mask or enhance, both are not possible")
+                if self.add_mask:
+                    imgs = np.array(
+                        Image.open(self.root + add_fronts[i][:30] + '_mask' + add_fronts[i][30:]).resize((256, 256)))
+                elif self.enhanced:
+                    imgs = np.array(
+                        Image.open(self.root + add_fronts[i]).resize((256, 256)))
+                else:
+                    imgs = np.array(Image.open(self.root + add_fronts[i][:30]+'_raw'+add_fronts[i][30:]).resize((256, 256)))
             data['fronts'].append(torch.from_numpy(np.transpose(np.array(Image.open(self.root+add_fronts[i]).resize((256,256))),(2,0,1))))
             radar_ang = np.expand_dims(np.load(self.root + add_radars[i]), 0)
             if self.add_velocity:

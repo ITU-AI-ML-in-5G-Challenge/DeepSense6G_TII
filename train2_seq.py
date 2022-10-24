@@ -35,6 +35,9 @@ parser.add_argument('--val_every', type=int, default=1, help='Validation frequen
 parser.add_argument('--shuffle_every', type=int, default=6, help='Shuffle the dataset frequency (epochs).')
 parser.add_argument('--batch_size', type=int, default=24, help='Batch size')	# default=24
 parser.add_argument('--logdir', type=str, default='log', help='Directory to log data to.')
+parser.add_argument('--add_velocity', type = int, default=1, help='concatenate velocity map with angle map')
+parser.add_argument('--add_mask', type=int, default=0, help='add mask to the camera data')
+parser.add_argument('--enhanced', type=int, default=0, help='use enhanced camera data')
 
 args = parser.parse_args()
 args.logdir = os.path.join(args.logdir, args.id)
@@ -360,6 +363,9 @@ def compute_DBA_score(y_pred, y_true, max_k=3, delta=5):
 
 # Config
 config = GlobalConfig()
+config.add_velocity = args.add_velocity
+config.add_mask = args.add_mask
+config.enhanced = args.enhanced
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 
