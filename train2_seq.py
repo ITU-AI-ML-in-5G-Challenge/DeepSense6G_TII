@@ -14,12 +14,13 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, ConcatDataset
 from torch.utils.tensorboard import SummaryWriter
 import torch.nn.functional as F
+import torch.nn as nn
 torch.backends.cudnn.benchmark = True
 from scheduler import CyclicCosineDecayLR
 
 from config_seq import GlobalConfig
 from model2_seq import TransFuser
-from data2_seq import CARLA_Data,CARLA_Data_Test
+from data2_seq import CARLA_Data
 
 import matplotlib.pyplot as plt
 import torchvision
@@ -41,6 +42,9 @@ parser.add_argument('--add_mask', type=int, default=0, help='add mask to the cam
 parser.add_argument('--enhanced', type=int, default=0, help='use enhanced camera data')
 parser.add_argument('--loss', type=str, default='ce', help='crossentropy or focal loss')
 parser.add_argument('--scheduler', type=int, default=0, help='use scheduler to control the learning rate')
+parser.add_argument('--load_previous_best', type=int, default=1, help='load previous best pretrained model ')
+parser.add_argument('--temp_coef', type=int, default=0, help='apply temperature coefficience on the target')
+parser.add_argument('--train_adapt_together', type=int, default=0, help='combine train and adaptation dataset together')
 
 args = parser.parse_args()
 args.logdir = os.path.join(args.logdir, args.id)
@@ -113,7 +117,10 @@ class Engine(object):
 			# print(pred_beams[0,:])
 			# print(torch.argmax(pred_beams, dim=1) == gt_beamidx)
 
-			loss = self.criterion(pred_beams, gt_beams)
+			if args.temp_coef:
+				loss = self.criterion(pred_beams, gt_beams)
+			else:
+				loss = self.criterion(pred_beams, gt_beamidx)
 			# loss = torch.sum(loss * data['loss_weight'].to(args.device, dtype=torch.float32))
 
 			gt_beam_all.append(data['beamidx'][0])
@@ -177,7 +184,10 @@ class Engine(object):
 				pred_beam_all.append(torch.argsort(pred_beams, dim=1, descending=True).cpu().numpy())
 				running_acc += (torch.argmax(pred_beams, dim=1) == gt_beamidx).sum().item()
 
-				loss = self.criterion(pred_beams, gt_beams)
+				if args.temp_coef:
+					loss = self.criterion(pred_beams, gt_beams)
+				else:
+					loss = self.criterion(pred_beams, gt_beamidx)
 				# loss = torch.sum(loss * data['loss_weight'].to(args.device, dtype=torch.float32))
 
 				wp_epoch += float(loss.item())
@@ -297,7 +307,7 @@ class Engine(object):
 			torch.save(model.state_dict(), os.path.join(args.logdir, 'best_model.pth'))
 			torch.save(optimizer.state_dict(), os.path.join(args.logdir, 'best_optim.pth'))
 			tqdm.write('====== Overwrote best model ======>')
-		else:
+		elif args.load_previous_best:
 			model.load_state_dict(torch.load(os.path.join(args.logdir, 'best_model.pth')))
 			optimizer.load_state_dict(torch.load(os.path.join(args.logdir, 'best_optim.pth')))
 			tqdm.write('====== Load the previous best model ======>')
@@ -381,22 +391,22 @@ config.enhanced = args.enhanced
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 
-# trainval_root='/home/tiany0c/Downloads/MultiModeBeamforming/0Multi_Modal/'
+trainval_root='/home/tiany0c/Downloads/MultiModeBeamforming/0Multi_Modal/'
 # train_root_csv='ml_challenge_dev_multi_modal1.csv'
 # trainval_root= '/home/tiany0c/Downloads/MultiModeBeamforming/Adaptation_dataset_multi_modal/'
 
-trainval_root= '/efs/data/Multi_Modal/'
+# trainval_root= '/efs/data/Multi_Modal/'
 train_root_csv='ml_challenge_dev_multi_modal.csv'
 
 # trainval_root='/efs/data/Adaptation_dataset_multi_modal/'
 # train_root_csv='ml_challenge_data_adaptation_multi_modal.csv'
 
-# val_root='/home/tiany0c/Downloads/MultiModeBeamforming/Adaptation_dataset_multi_modal/'
-val_root='/efs/data/Adaptation_dataset_multi_modal/'
+val_root='/home/tiany0c/Downloads/MultiModeBeamforming/Adaptation_dataset_multi_modal/'
+# val_root='/efs/data/Adaptation_dataset_multi_modal/'
 val_root_csv='ml_challenge_data_adaptation_multi_modal.csv'
 
-# # test_root='/home/tiany0c/Downloads/MultiModeBeamforming/Multi_Modal_Test/'
-test_root='/efs/data/Multi_Modal_Test/'
+test_root='/home/tiany0c/Downloads/MultiModeBeamforming/Multi_Modal_Test/'
+# test_root='/efs/data/Multi_Modal_Test/'
 test_root_csv='ml_challenge_test_multi_modal.csv'
 
 # test_root='/efs/data/Multi_Modal/'
@@ -411,8 +421,8 @@ adaptation_set = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config,
 # # split the adaptation set
 # train_subset_size = int(0.8 * len(adaptation_set))
 # train_subset, val_set = torch.utils.data.random_split(adaptation_set, [train_subset_size, len(adaptation_set) - train_subset_size])
-
-train_set = ConcatDataset([development_set, adaptation_set])
+if args.train_adapt_together:
+	train_set = ConcatDataset([development_set, adaptation_set])
 
 # # For testing small dataset
 # train_set, _ = torch.utils.data.random_split(train_set, [100, len(train_set) - 100])

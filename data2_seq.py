@@ -13,6 +13,7 @@ import open3d as o3d
 import torchvision.transforms as transforms
 from scipy import stats
 import utm
+import cv2
 class CARLA_Data(Dataset):
     def __init__(self, root, root_csv, config, test=False):
 
@@ -100,7 +101,7 @@ class CARLA_Data(Dataset):
             PT = lidar_to_histogram_features(PT)
             data['lidars'].append(PT)
 
-        if self.test:
+        if not self.test:
             data['beam'] = []
             data['beamidx'] = []
             beamidx = self.dataframe['unit1_beam'][index] - 1
