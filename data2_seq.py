@@ -98,7 +98,7 @@ class CARLA_Data(Dataset):
             # data['radars'].append(torch.from_numpy(np.expand_dims(np.load(self.root+add_radars[i]),0)))
             #lidar data
             PT = np.asarray(o3d.io.read_point_cloud(self.root+add_lidars[i]).points)
-            PT = lidar_to_histogram_features(PT)
+            PT = lidar_to_histogram_features(PT, add_lidars[i])
             data['lidars'].append(PT)
 
         if not self.test:
@@ -116,11 +116,11 @@ class CARLA_Data(Dataset):
 
         
 
-def lidar_to_histogram_features(lidar, crop=256):
+def lidar_to_histogram_features(lidar, address):
     """
     Convert LiDAR point cloud into 2-bin histogram over 256x256 grid
     """
-    def splat_points(point_cloud):
+    def splat_points(point_cloud,addr):
         # 256 x 256 grid
         pixels_per_meter = 8
         hist_max_per_pixel = 5
@@ -128,12 +128,25 @@ def lidar_to_histogram_features(lidar, crop=256):
         y_meters_max = 50
         xbins = np.linspace(-x_meters_max, 0, 257)
         ybins = np.linspace(-y_meters_max, y_meters_max, 257)
+        if 'scenario31' in addr:
+            xbins = np.linspace(-70, 0, 257)
+            ybins = np.linspace(-25, 14, 257)
+        elif 'scenario32' in addr:
+            xbins = np.linspace(-60, 0, 257)
+            ybins = np.linspace(-40, 5.5, 257)
+        elif 'scenario33' in addr:
+            xbins = np.linspace(-50, 0, 257)
+            ybins = np.linspace(-12, 7, 257)
+        elif 'scenario34' in addr:
+            xbins = np.linspace(-50, 0, 257)
+            ybins = np.linspace(-20, 10, 257)
+
         hist = np.histogramdd(point_cloud[...,:2], bins=(xbins, ybins))[0]
         hist[hist>hist_max_per_pixel] = hist_max_per_pixel
         overhead_splat = hist/hist_max_per_pixel
         return overhead_splat
 
-    lidar_feature = splat_points(lidar)
+    lidar_feature = splat_points(lidar,address)
     lidar_feature = lidar_feature[np.newaxis, :, :]
     return lidar_feature
 
