@@ -38,6 +38,7 @@ parser.add_argument('--logdir', type=str, default='log', help='Directory to log 
 parser.add_argument('--add_velocity', type = int, default=1, help='concatenate velocity map with angle map')
 parser.add_argument('--add_mask', type=int, default=0, help='add mask to the camera data')
 parser.add_argument('--enhanced', type=int, default=0, help='use enhanced camera data')
+parser.add_argument('--loss', type=str, default='ce', help='crossentropy or focal loss')
 
 args = parser.parse_args()
 args.logdir = os.path.join(args.logdir, args.id)
@@ -65,10 +66,11 @@ class Engine(object):
 		# self.criterion = torch.nn.CrossEntropyLoss(weight=class_weights,reduction='mean')
 		# self.criterion = torch.nn.CrossEntropyLoss( reduction='mean')
 
-		# self.criterion = torch.nn.CrossEntropyLoss( reduction='none')
-		self.criterion =  FocalLoss(gamma= 2)
-
-		# self.criterion = torchvision.ops.sigmoid_focal_loss(reduction='mean')
+		if args.loss == 'ce':
+			self.criterion = torch.nn.CrossEntropyLoss(reduction='mean')
+		elif args.loss == 'focal':
+			# self.criterion =  FocalLoss(gamma= 2)
+			self.criterion = FocalLoss1()
 
 	def train(self):
 		loss_epoch = 0.
@@ -298,6 +300,14 @@ class Engine(object):
 			optimizer.load_state_dict(torch.load(os.path.join(args.logdir, 'best_optim.pth')))
 			tqdm.write('====== Load the previous best model ======>')
 
+class FocalLoss1(nn.Module):
+	def __init__(self, gamma=2, alpha=0.25):
+		super(FocalLoss1, self).__init__()
+		self.gamma = gamma
+		self.alpha = alpha
+	def __call__(self, input, target):
+		loss = torchvision.ops.sigmoid_focal_loss(input, target, alpha=self.alpha,gamma=self.gamma,reduction='mean')
+		return loss
 
 class FocalLoss(torch.nn.modules.loss._WeightedLoss):
     def __init__(self, weight=None, gamma=2):
