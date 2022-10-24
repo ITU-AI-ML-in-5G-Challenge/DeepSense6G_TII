@@ -40,6 +40,8 @@ def normalize_imagenet(x):
     x[:, 0] = (x[:, 0]/255.0 - 0.485) / 0.229
     x[:, 1] = (x[:, 1]/255.0 - 0.456) / 0.224
     x[:, 2] = (x[:, 2]/255.0 - 0.406) / 0.225
+    if x.shape[-1]==4:
+        x[:,4] = x[:,4]/255.0
     return x
 
 
@@ -258,8 +260,12 @@ class Encoder(nn.Module):
         self.avgpool = nn.AdaptiveAvgPool2d((self.config.vert_anchors, self.config.horz_anchors))
         
         self.image_encoder = ImageCNN(512, normalize=True)
-        self.lidar_encoder = LidarEncoder(num_classes=512, in_channels=2)
-        self.radar_encoder = LidarEncoder(num_classes=512, in_channels=1)
+        self.lidar_encoder = LidarEncoder(num_classes=512, in_channels=1)
+        if config.add_velocity:
+            self.radar_encoder = LidarEncoder(num_classes=512, in_channels=2)
+        else:
+            self.radar_encoder = LidarEncoder(num_classes=512, in_channels=1)
+
 
         self.transformer1 = GPT(n_embd=64,
                             n_head=config.n_head, 

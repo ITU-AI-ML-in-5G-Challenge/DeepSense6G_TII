@@ -37,9 +37,9 @@ class CARLA_Data(Dataset):
         add_fronts = self.dataframe['unit1_rgb_5'][index]
         file_sep = '/'
         add_fronts_split = add_fronts.split(file_sep)
-        if '33' in add_fronts_split[1] or '34' in add_fronts_split[1]: 
-            add_fronts_split[-2]=add_fronts_split[-2]+'_raw'
-            add_fronts = file_sep.join(add_fronts_split)
+        #if '33' in add_fronts_split[1] or '34' in add_fronts_split[1]: 
+        add_fronts_split[-2]=add_fronts_split[-2]+'_mask'
+        add_fronts = file_sep.join(add_fronts_split)
         
         add_lidars = self.dataframe['unit1_lidar_5'][index]
         beamidx=self.dataframe['unit1_beam'][index]-1
@@ -94,8 +94,8 @@ def lidar_to_histogram_features(lidar, crop=256):
         # 256 x 256 grid
         pixels_per_meter = 8
         hist_max_per_pixel = 5
-        x_meters_max = 100
-        y_meters_max = 100
+        x_meters_max = 50
+        y_meters_max = 50
         xbins = np.linspace(-x_meters_max, x_meters_max+1, 257)
         ybins = np.linspace(-y_meters_max, y_meters_max, 257)
         hist = np.histogramdd(point_cloud[...,:2], bins=(xbins, ybins))[0]
