@@ -270,7 +270,10 @@ class Encoder(nn.Module):
         self.avgpool = nn.AdaptiveAvgPool2d((self.config.vert_anchors, self.config.horz_anchors))
         self.image_encoder = ImageCNN(512, normalize=True)
         self.lidar_encoder = LidarEncoder(num_classes=512, in_channels=1)
-        self.radar_encoder = LidarEncoder(num_classes=512, in_channels=1)
+        if config.add_velocity:
+            self.radar_encoder = LidarEncoder(num_classes=512, in_channels=2)
+        else:
+            self.radar_encoder = LidarEncoder(num_classes=512, in_channels=1)
 
         self.vel_emb1 = nn.Linear(2, 64)
         self.vel_emb2 = nn.Linear(64, 128)
