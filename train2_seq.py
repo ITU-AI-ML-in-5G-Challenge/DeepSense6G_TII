@@ -15,6 +15,7 @@ from torch.utils.data import DataLoader, ConcatDataset
 from torch.utils.tensorboard import SummaryWriter
 import torch.nn.functional as F
 torch.backends.cudnn.benchmark = True
+from scheduler import CyclicCosineDecayLR
 
 from config_seq import GlobalConfig
 from model2_seq import TransFuser
@@ -39,6 +40,7 @@ parser.add_argument('--add_velocity', type = int, default=1, help='concatenate v
 parser.add_argument('--add_mask', type=int, default=0, help='add mask to the camera data')
 parser.add_argument('--enhanced', type=int, default=0, help='use enhanced camera data')
 parser.add_argument('--loss', type=str, default='ce', help='crossentropy or focal loss')
+parser.add_argument('--scheduler', type=int, default=0, help='use scheduler to control the learning rate')
 
 args = parser.parse_args()
 args.logdir = os.path.join(args.logdir, args.id)
@@ -438,7 +440,15 @@ model = TransFuser(config, args.device)
 model = torch.nn.DataParallel(model)
 
 optimizer = optim.AdamW(model.parameters(), lr=args.lr)
-# scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
+if args.scheduler:
+	# scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
+	scheduler = CyclicCosineDecayLR(optimizer,
+	                                init_decay_epochs=15,
+	                                min_decay_lr=1e-6,
+	                                restart_interval = 10,
+	                                restart_lr=5e-5,
+	                                warmup_epochs=10,
+	                                warmup_start_lr=1e-6)
 trainer = Engine()
 
 model_parameters = filter(lambda p: p.requires_grad, model.parameters())
@@ -483,15 +493,14 @@ with open(os.path.join(args.logdir, 'args.txt'), 'w') as f:
 for epoch in range(trainer.cur_epoch, args.epochs): 
 	
 	print('epoch:',epoch)
-	# print('lr', scheduler.get_lr())
-
-	# trainer.test()	# test
-
 	trainer.train()
 	trainer.validate()
 	trainer.save()
+	if args.scheduler:
+		print('lr', scheduler.get_lr())
+		scheduler.step()
 
-	# scheduler.step()
+
 
 	# torch.save(model.state_dict(), os.path.join(args.logdir, 'current_model.pth'))
 	# torch.save(optimizer.state_dict(), os.path.join(args.logdir, 'current_optim.pth'))
