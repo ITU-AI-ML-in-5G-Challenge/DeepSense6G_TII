@@ -107,16 +107,10 @@ def lidar_to_histogram_features(lidar, crop=256):
         hist[hist>hist_max_per_pixel] = hist_max_per_pixel
         overhead_splat = hist/hist_max_per_pixel
         return overhead_splat
-    # idx=lidar[:,2]<2
-    # lidar = lidar[idx, :]
 
-    below = lidar[lidar[...,2]<=-2.0]
-    above = lidar[lidar[...,2]>-2.0]
-    below_features = splat_points(below)
-    above_features = splat_points(above)
-    features = np.stack([below_features, above_features], axis=-1)
-    features = np.transpose(features, (2, 0, 1)).astype(np.float32)
-    return features
+    lidar_feature = splat_points(lidar)
+    lidar_feature = lidar_feature[np.newaxis, :, :]
+    return lidar_feature
 
 def xy_from_latlong(lat_long):
     """
