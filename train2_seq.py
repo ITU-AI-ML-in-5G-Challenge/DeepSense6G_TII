@@ -436,6 +436,11 @@ adaptation_set = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config,
 # train_subset, val_set = torch.utils.data.random_split(adaptation_set, [train_subset_size, len(adaptation_set) - train_subset_size])
 if args.train_adapt_together:
 	train_set = ConcatDataset([development_set, adaptation_set])
+	train_size = len(train_set)
+else:
+	train_size = len(development_set)
+	train_set = development_set
+
 
 # # For testing small dataset
 # train_set, _ = torch.utils.data.random_split(train_set, [100, len(train_set) - 100])
@@ -448,10 +453,10 @@ test_set = CARLA_Data(root=test_root, root_csv=test_root_csv, config=config, tes
 # train_size = int(0.01 * len(train_set))
 # train_set, _= torch.utils.data.random_split(train_set, [train_size, len(train_set) - train_size])
 
-train_size = len(train_set)
+
 val_size = len(val_set)
 
-print('train_set:', len(train_set),'val_set:', len(val_set), 'test_set:', len(test_set))
+print('train_set:', train_size,'val_set:', val_size, 'test_set:', len(test_set))
 dataloader_train = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=8, pin_memory=True, worker_init_fn=seed_worker, generator=g)
 dataloader_val = DataLoader(val_set, batch_size=args.batch_size, shuffle=False, num_workers=8, pin_memory=False)
 dataloader_test = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=8, pin_memory=False)
