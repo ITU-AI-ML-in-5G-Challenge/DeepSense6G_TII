@@ -14,7 +14,7 @@ import torchvision.transforms as transforms
 from scipy import stats
 import utm
 class CARLA_Data(Dataset):
-    def __init__(self, root, root_csv, config, test):
+    def __init__(self, root, root_csv, config, test=False):
 
         self.dataframe = pd.read_csv(root+root_csv)
         self.root=root
@@ -22,6 +22,7 @@ class CARLA_Data(Dataset):
         self.gps_data = []
         self.pos_input_normalized = Normalize_loc(root,self.dataframe)
         self.test = test
+        self.add_velocity = config.add_velocity
 
     def __len__(self):
         """Returns the length of the dataset. """
@@ -70,7 +71,13 @@ class CARLA_Data(Dataset):
 
         for i in range(self.seq_len):
             data['fronts'].append(torch.from_numpy(np.transpose(np.array(Image.open(self.root+add_fronts[i]).resize((256,256))),(2,0,1))))
-            data['radars'].append(torch.from_numpy(np.expand_dims(np.load(self.root+add_radars[i]),0)))
+            radar_ang = np.expand_dims(np.load(self.root + add_radars[i]), 0)
+            if self.add_velocity:
+                radar_vel = np.expand_dims(np.load(self.root + add_radars[i].replace('ang','vel')), 0)
+                data['radars'].append(torch.from_numpy(np.concatenate([radar_ang, radar_vel], 0)))
+            else:
+                data['radars'].append(torch.from_numpy(radar_ang))
+            # data['radars'].append(torch.from_numpy(np.expand_dims(np.load(self.root+add_radars[i]),0)))
             #lidar data
             PT = np.asarray(o3d.io.read_point_cloud(self.root+add_lidars[i]).points)
             PT = lidar_to_histogram_features(PT)
