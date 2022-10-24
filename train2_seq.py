@@ -2,7 +2,7 @@ import argparse
 import json
 import os, sys
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0, 1, 2, 3"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "0, 1, 2, 3"
 
 
 from tqdm import tqdm
@@ -318,7 +318,12 @@ class FocalLoss1(nn.Module):
 		self.gamma = gamma
 		self.alpha = alpha
 	def __call__(self, input, target):
-		loss = torchvision.ops.sigmoid_focal_loss(input, target, alpha=self.alpha,gamma=self.gamma,reduction='mean')
+		if len(target.shape) == 1:
+			target = torch.nn.functional.one_hot(target, num_classes=64)
+		loss = torchvision.ops.sigmoid_focal_loss(input, target.float(), alpha=self.alpha, gamma=self.gamma,
+												  reduction='mean')
+
+		# loss = torchvision.ops.sigmoid_focal_loss(input, target, alpha=self.alpha,gamma=self.gamma,reduction='mean')
 		return loss
 
 class FocalLoss(torch.nn.modules.loss._WeightedLoss):
