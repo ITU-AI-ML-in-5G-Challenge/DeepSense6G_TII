@@ -387,8 +387,8 @@ test_root_csv='ml_challenge_test_multi_modal.csv'
 # Data
 # train_set = CARLA_Data(root=test_root, root_csv=test_root_csv, config=config)
 
-development_set = CARLA_Data(root=trainval_root, root_csv=train_root_csv, config=config)	# development dataset 11k samples
-adaptation_set = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config)	# adaptation dataset 100 samples
+development_set = CARLA_Data(root=trainval_root, root_csv=train_root_csv, config=config, test=False)	# development dataset 11k samples
+adaptation_set = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config, test=False)	# adaptation dataset 100 samples
 
 # # split the adaptation set
 # train_subset_size = int(0.8 * len(adaptation_set))
@@ -402,7 +402,7 @@ train_set = ConcatDataset([development_set, adaptation_set])
 
 val_set = adaptation_set
 
-test_set = CARLA_Data_Test(root=test_root, root_csv=test_root_csv, config=config)
+test_set = CARLA_Data(root=test_root, root_csv=test_root_csv, config=config, test=True)
 
 # train_size = int(0.01 * len(train_set))
 # train_set, _= torch.utils.data.random_split(train_set, [train_size, len(train_set) - train_size])
