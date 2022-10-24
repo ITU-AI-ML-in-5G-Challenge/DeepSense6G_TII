@@ -286,7 +286,7 @@ class FocalLoss1(nn.Module):
 		super(FocalLoss1, self).__init__()
 		self.gamma = gamma
 		self.alpha = alpha
-	def forward(self, input, target):
+	def __call__(self, input, target):
 		loss = torchvision.ops.sigmoid_focal_loss(input, target, alpha=self.alpha,gamma=self.gamma,reduction='mean')
 		return loss
 
