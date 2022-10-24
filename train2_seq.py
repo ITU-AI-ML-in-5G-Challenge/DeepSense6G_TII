@@ -388,7 +388,20 @@ config = GlobalConfig()
 config.add_velocity = args.add_velocity
 config.add_mask = args.add_mask
 config.enhanced = args.enhanced
-
+import random
+import numpy
+seed = 100
+random.seed(seed)
+np.random.seed(seed) # numpy
+torch.manual_seed(seed) # torch+CPU
+torch.cuda.manual_seed(seed) # torch+GPU
+torch.use_deterministic_algorithms(False)
+g = torch.Generator()
+g.manual_seed(seed)
+def seed_worker(worker_id):
+    worker_seed = torch.initial_seed() % 2**32
+    numpy.random.seed(worker_seed)
+    random.seed(worker_seed)
 # os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 
 trainval_root='/home/tiany0c/Downloads/MultiModeBeamforming/0Multi_Modal/'
@@ -439,7 +452,7 @@ train_size = len(train_set)
 val_size = len(val_set)
 
 print('train_set:', len(train_set),'val_set:', len(val_set), 'test_set:', len(test_set))
-dataloader_train = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=8, pin_memory=True)
+dataloader_train = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=8, pin_memory=True, worker_init_fn=seed_worker, generator=g)
 dataloader_val = DataLoader(val_set, batch_size=args.batch_size, shuffle=False, num_workers=8, pin_memory=False)
 dataloader_test = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=8, pin_memory=False)
 
