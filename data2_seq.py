@@ -101,7 +101,7 @@ def lidar_to_histogram_features(lidar, crop=256):
         hist_max_per_pixel = 5
         x_meters_max = 50
         y_meters_max = 50
-        xbins = np.linspace(-x_meters_max, x_meters_max+1, 257)
+        xbins = np.linspace(-x_meters_max, 0, 257)
         ybins = np.linspace(-y_meters_max, y_meters_max, 257)
         hist = np.histogramdd(point_cloud[...,:2], bins=(xbins, ybins))[0]
         hist[hist>hist_max_per_pixel] = hist_max_per_pixel
