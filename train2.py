@@ -1,6 +1,10 @@
 import argparse
+import csv
 import json
+from operator import index
 import os
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
+from pyparsing import col
 from tqdm import tqdm
 import pandas as pd
 
@@ -367,31 +371,53 @@ config.enhanced = args.enhanced
 # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
 
 trainval_root='/efs/data/Multi_Modal/'
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+
 train_root_csv='ml_challenge_dev_multi_modal.csv'
 # val_root='/home/tiany0c/Downloads/MultiModeBeamforming/Adaptation_dataset_multi_modal/'
 val_root='/efs/data/Adaptation_dataset_multi_modal/'
 
-
-# val_root='/home/tiany0c/Downloads/MultiModeBeamforming/Adaptation_dataset_multi_modal/'
-# val_root='/efs/data/Adaptation_dataset_multi_modal/'
-
 val_root_csv='ml_challenge_data_adaptation_multi_modal.csv'
-# test_root='/home/tiany0c/Downloads/MultiModeBeamforming/Multi_Modal_Test/'
-test_root='/efs/data/Multi_Modal_Test/'
+test_root='/home/tiany0c/Downloads/MultiModeBeamforming/Multi_Modal_Test/'
+# test_root='/efs/data/Multi_Modal_Test/'
 test_root_csv='ml_challenge_test_multi_modal.csv'
 # Data
 train_set = CARLA_Data(root=trainval_root, root_csv=train_root_csv, config=config, test=False)
 # train_set = CARLA_Data(root=test_root, root_csv=test_root_csv, config=config)
 val_set = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config, test=False)
-
-if args.train_adapt_together:
-	train_set = ConcatDataset([train_set, val_set])
 test_set = CARLA_Data(root=test_root, root_csv=test_root_csv, config=config, test=True)
 train_size, val_size= len(train_set), len(val_set)
 # train_size = int(0.01 * len(train_set))
 # train_set, _= torch.utils.data.random_split(train_set, [train_size, len(train_set) - train_size])
-print(len(train_set),len(val_set),len(test_set) )
+print(len(train_set),len(val_set),len(test_set))
+
+# Create a dataset for each scenario: 
+
+def createDataset(InputFile, OutputFile, Keyword):
+
+	RawFile = InputFile
+	CleanedFile = OutputFile +'.csv'
+	#Keyword = 'scenario34'
+	with open(RawFile) as infile, open(CleanedFile, 'w') as outfile:
+    
+		reader = csv.reader(infile)
+		writer = csv.writer(outfile)
+		for row in reader:
+			try:
+ 				if Keyword in row[1]:
+						writer.writerow(row)
+			except:
+				   continue
+
+					
+dataset_scenario_31 = createDataset('ml_challenge_dev_multi_modal.csv', 'scenario_32', 'scenario31')
+dataset_scenario_32 = createDataset('ml_challenge_dev_multi_modal.csv', 'scenario_32', 'scenario32')
+dataset_scenario_33 = createDataset('ml_challenge_dev_multi_modal.csv', 'scenario_32', 'scenario33')
+dataset_scenario_34 = createDataset('ml_challenge_dev_multi_modal.csv', 'scenario_32', 'scenario34')
+
+
+# train_set, _= torch.utils.data.random_split(train_set, [train_size, len(train_set) - train_size])		
+
+
 dataloader_train = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=8, pin_memory=True)
 dataloader_val = DataLoader(val_set, batch_size=args.batch_size, shuffle=False, num_workers=8, pin_memory=False)
 dataloader_test = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=8, pin_memory=False)
@@ -402,9 +428,9 @@ dataloader_test = DataLoader(test_set, batch_size=args.batch_size, shuffle=False
 
 model = TransFuser(config, args.device)
 
-model = torch.nn.DataParallel(model, device_ids = [0])
+# model = torch.nn.DataParallel(model, device_ids = [0])
 
-# model = torch.nn.DataParallel(model, device_ids = [0,1])
+model = torch.nn.DataParallel(model, device_ids = [0,1])
 
 optimizer = optim.AdamW(model.parameters(), lr=args.lr)
 
