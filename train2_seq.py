@@ -36,7 +36,7 @@ parser.add_argument('--lr', type=float, default=2e-4, help='Learning rate.')
 parser.add_argument('--val_every', type=int, default=1, help='Validation frequency (epochs).')
 parser.add_argument('--shuffle_every', type=int, default=6, help='Shuffle the dataset frequency (epochs).')
 parser.add_argument('--batch_size', type=int, default=24, help='Batch size')	# default=24
-parser.add_argument('--logdir', type=str, default='log', help='Directory to log data to.')
+parser.add_argument('--logdir', type=str, default='/ibex/scratch/tiany0c/log', help='Directory to log data to.')
 parser.add_argument('--add_velocity', type = int, default=1, help='concatenate velocity map with angle map')
 parser.add_argument('--add_mask', type=int, default=0, help='add mask to the camera data')
 parser.add_argument('--enhanced', type=int, default=0, help='use enhanced camera data')
@@ -46,6 +46,7 @@ parser.add_argument('--load_previous_best', type=int, default=1, help='load prev
 parser.add_argument('--temp_coef', type=int, default=0, help='apply temperature coefficience on the target')
 parser.add_argument('--train_adapt_together', type=int, default=0, help='combine train and adaptation dataset together')
 parser.add_argument('--finetune', type=int, default=0, help='first train on development set and finetune on 31-34 set')
+parser.add_argument('--Test', type=int, default=0, help='Test')
 args = parser.parse_args()
 args.logdir = os.path.join(args.logdir, args.id)
 
@@ -153,10 +154,13 @@ class Engine(object):
 			writer.add_scalars('curr_acc_train', {'beam' + str(i):curr_acc[i]}, self.cur_epoch)
 		writer.add_scalar('curr_loss_train', loss_epoch, self.cur_epoch)
 		if args.finetune:
-			self.DBAft.append(DBA)
-			if DBA>self.DBAft[-2]:
+			if DBA>self.DBAft[-1]:
+				self.DBAft.append(DBA)
+				print(DBA, self.DBAft[-2], 'save new model')
 				torch.save(model.state_dict(), os.path.join(args.logdir, 'finetune_on_' + kw + 'model.pth'))
-				# torch.save(optimizer.state_dict(), os.path.join(args.logdir, 'finetune_on_' + kw + 'optim.pth'))
+				torch.save(optimizer.state_dict(), os.path.join(args.logdir, 'finetune_on_' + kw + 'optim.pth'))
+			else:
+				print('best',self.DBAft[-1])
 
 	def validate(self):
 		model.eval()
@@ -300,8 +304,8 @@ class Engine(object):
 		# torch.save(model.state_dict(), os.path.join(args.logdir, 'model_%d.pth'%self.cur_epoch))
 		#
 		# Save the recent model/optimizer states
-		torch.save(model.state_dict(), os.path.join(args.logdir, 'model.pth'))
-		torch.save(optimizer.state_dict(), os.path.join(args.logdir, 'recent_optim.pth'))
+		torch.save(model.state_dict(), os.path.join(args.logdir, 'final_model.pth'))
+		# torch.save(optimizer.state_dict(), os.path.join(args.logdir, 'recent_optim.pth'))
 		#
 		# # Log other data corresponding to the recent model
 		with open(os.path.join(args.logdir, 'recent.log'), 'w') as f:
@@ -432,10 +436,10 @@ data_root='/home/tiany0c/Downloads'
 data_root='.'
 trainval_root=data_root+'/MultiModeBeamforming/0Multi_Modal/'
 # train_root_csv='ml_challenge_dev_multi_modal1.csv'
-# trainval_root= '/home/tiany0c/Downloads/MultiModeBeamforming/Adaptation_dataset_multi_modal/'
+# trainval_root= data_root+'/MultiModeBeamforming/Adaptation_dataset_multi_modal/'
 
 # trainval_root= '/efs/data/Multi_Modal/'
-train_root_csv='ml_challenge_dev_multi_modal.csv'
+train_root_csv='ml_challenge_dev_multi_modal1.csv'
 
 # trainval_root='/efs/data/Adaptation_dataset_multi_modal/'
 # train_root_csv='ml_challenge_data_adaptation_multi_modal.csv'
@@ -459,14 +463,19 @@ test_root_csv='ml_challenge_test_multi_modal.csv'
 # train_set = CARLA_Data(root=test_root, root_csv=test_root_csv, config=config)
 
 
-adaptation_set = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config, test=False)	# adaptation dataset 100 samples
+
 if args.finetune:
+	adaptation_set = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config,
+								test=False)  # adaptation dataset 100 samples
 	dev34_set = CARLA_Data(root=trainval_root, root_csv='scenario34.csv', config=config, test=False)
 	dev34_set, _ = torch.utils.data.random_split(dev34_set, [25, len(dev34_set) - 25])
 	development_set = ConcatDataset([adaptation_set, dev34_set])
 else:
 	development_set = CARLA_Data(root=trainval_root, root_csv=train_root_csv, config=config,
 								 test=False)  # development dataset 11k samples
+	train_size = int(0.8 * len(development_set))
+	train_set, val_set = torch.utils.data.random_split(development_set,
+														  [train_size, len(development_set) - train_size])
 
 # # split the adaptation set
 # train_subset_size = int(0.8 * len(adaptation_set))
@@ -476,16 +485,17 @@ if args.train_adapt_together and  args.finetune:
 if args.train_adapt_together and not args.finetune:
 	train_set = ConcatDataset([development_set, adaptation_set])
 	train_size = len(train_set)
-else:
-	train_size = len(development_set)
-	train_set = development_set
+# else:
+# 	train_size = len(development_set)
+# 	train_set = development_set
+# 	print('train_set = development_set')
 
 
 # # For testing small dataset
 # train_set, _ = torch.utils.data.random_split(train_set, [100, len(train_set) - 100])
 
 
-val_set = adaptation_set
+# val_set = adaptation_set
 
 test_set = CARLA_Data(root=test_root, root_csv=test_root_csv, config=config, test=True)
 
@@ -553,15 +563,21 @@ elif os.path.isfile(os.path.join(args.logdir, 'recent.log')):
 	# Load checkpoint
 	if args.finetune:
 		kw='best_'
-		if os.path.exists('finetune_on_'+kw+'model.pth')
+		if os.path.exists(os.path.join(args.logdir, 'finetune_on_'+ kw + 'model.pth')):
+			print('loading last finetune model')
 			model.load_state_dict(torch.load(os.path.join(args.logdir, 'finetune_on_'+ kw + 'model.pth')))
+			optimizer.load_state_dict(torch.load(os.path.join(args.logdir, 'finetune_on_' + kw + 'optim.pth')))
 		else:
+			print('loading '+kw+' model')
 			model.load_state_dict(torch.load(os.path.join(args.logdir, kw+'model.pth')))
-		# optimizer.load_state_dict(torch.load(os.path.join(args.logdir, kw+'optim.pth')))
-		print('loading '+kw+' model')
+			# optimizer.load_state_dict(torch.load(os.path.join(args.logdir, kw+'optim.pth')))
+	else:
+		model.load_state_dict(torch.load(os.path.join(args.logdir, 'best_model.pth')))
+
+
 
 	# trainer.validate()
-	# trainer.test()	# test
+	# 	# test
 	# sys.exit()
 
 
@@ -569,20 +585,23 @@ elif os.path.isfile(os.path.join(args.logdir, 'recent.log')):
 # Log args
 with open(os.path.join(args.logdir, 'args.txt'), 'w') as f:
 	json.dump(args.__dict__, f, indent=2)
+if args.Test==1:
+	trainer.test()
+	print('Test finish')
+else:
+	for epoch in range(trainer.cur_epoch, args.epochs):
 
-for epoch in range(trainer.cur_epoch, args.epochs): 
-	
-	print('epoch:',epoch)
-	trainer.train()
-	for param in model.parameters():
-		print(param.requires_grad)
+		print('epoch:',epoch)
+		trainer.train()
+		# for param in model.parameters():
+		# 	print(param.requires_grad)
 
-	if not args.finetune:
-		trainer.validate()
-		trainer.save()
-	if args.scheduler:
-		print('lr', scheduler.get_lr())
-		scheduler.step()
+		if not args.finetune:
+			trainer.validate()
+			trainer.save()
+		if args.scheduler:
+			print('lr', scheduler.get_lr())
+			scheduler.step()
 
 
 
