@@ -502,8 +502,8 @@ class TransFuser(nn.Module):
                             nn.ReLU(inplace=True),
                             nn.Linear(128, 64),
                         ).to(self.device)
-        self.decoder = nn.GRUCell(input_size=2, hidden_size=64).to(self.device)
-        self.output = nn.Linear(64, 2).to(self.device)
+        # self.decoder = nn.GRUCell(input_size=2, hidden_size=64).to(self.device)
+        # self.output = nn.Linear(64, 2).to(self.device)
         
     def forward(self, image_list, lidar_list, radar_list, velocity):
         '''

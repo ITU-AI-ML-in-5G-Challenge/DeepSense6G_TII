@@ -1,7 +1,7 @@
 import argparse
 import json
 import os, sys
-
+import csv
 # os.environ["CUDA_VISIBLE_DEVICES"] = "0, 1, 2, 3"
 
 
@@ -45,7 +45,7 @@ parser.add_argument('--scheduler', type=int, default=0, help='use scheduler to c
 parser.add_argument('--load_previous_best', type=int, default=1, help='load previous best pretrained model ')
 parser.add_argument('--temp_coef', type=int, default=0, help='apply temperature coefficience on the target')
 parser.add_argument('--train_adapt_together', type=int, default=0, help='combine train and adaptation dataset together')
-
+parser.add_argument('--finetune', type=int, default=0, help='first train on development set and finetune on 31-34 set')
 args = parser.parse_args()
 args.logdir = os.path.join(args.logdir, args.id)
 
@@ -150,7 +150,6 @@ class Engine(object):
 		for i in range(len(curr_acc)):
 			writer.add_scalars('curr_acc_train', {'beam' + str(i):curr_acc[i]}, self.cur_epoch)
 		writer.add_scalar('curr_loss_train', loss_epoch, self.cur_epoch)
-
 
 	def validate(self):
 		model.eval()
@@ -407,6 +406,20 @@ def seed_worker(worker_id):
     worker_seed = torch.initial_seed() % 2**32
     numpy.random.seed(worker_seed)
     random.seed(worker_seed)
+def createDataset(InputFile, OutputFile, Keyword):
+	RawFile = InputFile
+	CleanedFile = OutputFile +'.csv'
+	#Keyword = 'scenario34'
+	with open(RawFile) as infile, open(CleanedFile, 'w') as outfile:
+		reader = csv.DictReader(infile)
+		writer = csv.DictWriter(outfile,fieldnames=reader.fieldnames)
+		writer.writeheader()
+		for row in reader:
+			try:
+ 				if Keyword in row[reader.fieldnames[1]]:
+						writer.writerow(row)
+			except:
+				   continue
 # os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 
 trainval_root='/home/tiany0c/Downloads/MultiModeBeamforming/0Multi_Modal/'
@@ -418,11 +431,15 @@ train_root_csv='ml_challenge_dev_multi_modal.csv'
 
 # trainval_root='/efs/data/Adaptation_dataset_multi_modal/'
 # train_root_csv='ml_challenge_data_adaptation_multi_modal.csv'
-
+for keywords in ['scenario32','scenario33','scenario34']:
+	createDataset(trainval_root+train_root_csv, trainval_root+keywords,keywords)
+	print(trainval_root+keywords)
 val_root='/home/tiany0c/Downloads/MultiModeBeamforming/Adaptation_dataset_multi_modal/'
 # val_root='/efs/data/Adaptation_dataset_multi_modal/'
 val_root_csv='ml_challenge_data_adaptation_multi_modal.csv'
-
+for keywords in ['scenario31','scenario32','scenario33']:
+	createDataset(val_root+val_root_csv, val_root+keywords,keywords)
+	print(val_root + keywords)
 test_root='/home/tiany0c/Downloads/MultiModeBeamforming/Multi_Modal_Test/'
 # test_root='/efs/data/Multi_Modal_Test/'
 test_root_csv='ml_challenge_test_multi_modal.csv'
@@ -433,13 +450,22 @@ test_root_csv='ml_challenge_test_multi_modal.csv'
 # Data
 # train_set = CARLA_Data(root=test_root, root_csv=test_root_csv, config=config)
 
-development_set = CARLA_Data(root=trainval_root, root_csv=train_root_csv, config=config, test=False)	# development dataset 11k samples
+
 adaptation_set = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config, test=False)	# adaptation dataset 100 samples
+if args.finetune:
+	dev34_set = CARLA_Data(root=trainval_root, root_csv='scenario34.csv', config=config, test=False)
+	dev34_set, _ = torch.utils.data.random_split(dev34_set, [25, len(dev34_set) - 25])
+	development_set = ConcatDataset([adaptation_set, dev34_set])
+else:
+	development_set = CARLA_Data(root=trainval_root, root_csv=train_root_csv, config=config,
+								 test=False)  # development dataset 11k samples
 
 # # split the adaptation set
 # train_subset_size = int(0.8 * len(adaptation_set))
 # train_subset, val_set = torch.utils.data.random_split(adaptation_set, [train_subset_size, len(adaptation_set) - train_subset_size])
-if args.train_adapt_together:
+if args.train_adapt_together and  args.finetune:
+	raise Exception('train on 31 and finetune can not be done at the same time' )
+if args.train_adapt_together and not args.finetune:
 	train_set = ConcatDataset([development_set, adaptation_set])
 	train_size = len(train_set)
 else:
@@ -471,8 +497,16 @@ dataloader_test = DataLoader(test_set, batch_size=args.batch_size, shuffle=False
 model = TransFuser(config, args.device)
 # model = torch.nn.DataParallel(model, device_ids = [2, 3])
 model = torch.nn.DataParallel(model)
-
-optimizer = optim.AdamW(model.parameters(), lr=args.lr)
+if args.finetune:
+	if isinstance(model, torch.nn.DataParallel):
+		for param in model.module.encoder.parameters():
+			param.requires_grad = False
+	else:
+		for param in model.encoder.parameters():
+			param.requires_grad = False
+	optimizer = optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=args.lr)
+else:
+	optimizer = optim.AdamW(model.parameters(), lr=args.lr)
 if args.scheduler:
 	# scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
 	scheduler = CyclicCosineDecayLR(optimizer,
@@ -483,7 +517,6 @@ if args.scheduler:
 	                                warmup_epochs=10,
 	                                warmup_start_lr=1e-6)
 trainer = Engine()
-
 model_parameters = filter(lambda p: p.requires_grad, model.parameters())
 # print([p.requires_grad for p in model_parameters])
 params = sum([np.prod(p.size()) for p in model_parameters])
@@ -527,8 +560,12 @@ for epoch in range(trainer.cur_epoch, args.epochs):
 	
 	print('epoch:',epoch)
 	trainer.train()
-	trainer.validate()
-	trainer.save()
+	if args.finetune:
+		torch.save(model.state_dict(), os.path.join(args.logdir, 'finetune_model.pth'))
+		torch.save(optimizer.state_dict(), os.path.join(args.logdir, 'finetune_optim.pth'))
+	else:
+		trainer.validate()
+		trainer.save()
 	if args.scheduler:
 		print('lr', scheduler.get_lr())
 		scheduler.step()
