@@ -69,6 +69,8 @@ class Engine(object):
 		self.val_loss = []
 		self.DBA = []
 		self.bestval = 0
+		if args.finetune:
+			self.DBAft = [0]
 		# self.criterion = torch.nn.CrossEntropyLoss(weight=class_weights,reduction='mean')
 		# self.criterion = torch.nn.CrossEntropyLoss( reduction='mean')
 
@@ -150,6 +152,11 @@ class Engine(object):
 		for i in range(len(curr_acc)):
 			writer.add_scalars('curr_acc_train', {'beam' + str(i):curr_acc[i]}, self.cur_epoch)
 		writer.add_scalar('curr_loss_train', loss_epoch, self.cur_epoch)
+		if args.finetune:
+			self.DBAft.append(DBA)
+			if DBA>self.DBAft[-2]:
+				torch.save(model.state_dict(), os.path.join(args.logdir, 'finetune_on_' + kw + 'model.pth'))
+				# torch.save(optimizer.state_dict(), os.path.join(args.logdir, 'finetune_on_' + kw + 'optim.pth'))
 
 	def validate(self):
 		model.eval()
@@ -421,8 +428,9 @@ def createDataset(InputFile, OutputFile, Keyword):
 			except:
 				   continue
 # os.environ["CUDA_VISIBLE_DEVICES"] = "3"
-
-trainval_root='/home/tiany0c/Downloads/MultiModeBeamforming/0Multi_Modal/'
+data_root='/home/tiany0c/Downloads'
+data_root='.'
+trainval_root=data_root+'/MultiModeBeamforming/0Multi_Modal/'
 # train_root_csv='ml_challenge_dev_multi_modal1.csv'
 # trainval_root= '/home/tiany0c/Downloads/MultiModeBeamforming/Adaptation_dataset_multi_modal/'
 
@@ -434,13 +442,13 @@ train_root_csv='ml_challenge_dev_multi_modal.csv'
 for keywords in ['scenario32','scenario33','scenario34']:
 	createDataset(trainval_root+train_root_csv, trainval_root+keywords,keywords)
 	print(trainval_root+keywords)
-val_root='/home/tiany0c/Downloads/MultiModeBeamforming/Adaptation_dataset_multi_modal/'
+val_root=data_root+'/MultiModeBeamforming/Adaptation_dataset_multi_modal/'
 # val_root='/efs/data/Adaptation_dataset_multi_modal/'
 val_root_csv='ml_challenge_data_adaptation_multi_modal.csv'
 for keywords in ['scenario31','scenario32','scenario33']:
 	createDataset(val_root+val_root_csv, val_root+keywords,keywords)
 	print(val_root + keywords)
-test_root='/home/tiany0c/Downloads/MultiModeBeamforming/Multi_Modal_Test/'
+test_root=data_root+'/MultiModeBeamforming/Multi_Modal_Test/'
 # test_root='/efs/data/Multi_Modal_Test/'
 test_root_csv='ml_challenge_test_multi_modal.csv'
 
@@ -542,9 +550,15 @@ elif os.path.isfile(os.path.join(args.logdir, 'recent.log')):
 
 	# # FOR TESTING ONLY
 
-	# # Load checkpoint
-	# model.load_state_dict(torch.load(os.path.join(args.logdir, 'best_model.pth')))
-	# # optimizer.load_state_dict(torch.load(os.path.join(args.logdir, 'best_optim.pth')))
+	# Load checkpoint
+	if args.finetune:
+		kw='best_'
+		if os.path.exists('finetune_on_'+kw+'model.pth')
+			model.load_state_dict(torch.load(os.path.join(args.logdir, 'finetune_on_'+ kw + 'model.pth')))
+		else:
+			model.load_state_dict(torch.load(os.path.join(args.logdir, kw+'model.pth')))
+		# optimizer.load_state_dict(torch.load(os.path.join(args.logdir, kw+'optim.pth')))
+		print('loading '+kw+' model')
 
 	# trainer.validate()
 	# trainer.test()	# test
@@ -560,10 +574,10 @@ for epoch in range(trainer.cur_epoch, args.epochs):
 	
 	print('epoch:',epoch)
 	trainer.train()
-	if args.finetune:
-		torch.save(model.state_dict(), os.path.join(args.logdir, 'finetune_model.pth'))
-		torch.save(optimizer.state_dict(), os.path.join(args.logdir, 'finetune_optim.pth'))
-	else:
+	for param in model.parameters():
+		print(param.requires_grad)
+
+	if not args.finetune:
 		trainer.validate()
 		trainer.save()
 	if args.scheduler:
