@@ -74,9 +74,15 @@ class CARLA_Data(Dataset):
 
         for i in range(self.seq_len):
             if 'scenario31' in add_fronts[i] or 'scenario32' in add_fronts[i]:
-                imgs = np.array(Image.open(self.root + add_fronts[i]).resize((256, 256)))
-                seg = np.array(Image.open(self.root+add_fronts[i][:30]+'_seg'+add_fronts[i][30:]).resize((256,256)))
-                imgs = cv2.addWeighted(imgs, 0.8, seg, 0.2, 0)
+                if self.add_mask:
+                    imgs = np.array(
+                        Image.open(self.root + add_fronts[i][:30] + '_mask' + add_fronts[i][30:]).resize((256, 256)))
+                else:
+                    imgs = np.array(
+                        Image.open(self.root + add_fronts[i]).resize((256, 256)))
+                # imgs = np.array(Image.open(self.root + add_fronts[i]).resize((256, 256)))
+                # seg = np.array(Image.open(self.root+add_fronts[i][:30]+'_seg'+add_fronts[i][30:]).resize((256,256)))
+                # imgs = cv2.addWeighted(imgs, 0.8, seg, 0.2, 0)
             else:
                 if self.add_mask & self.enhanced:
                     raise Exception("mask or enhance, both are not possible")
