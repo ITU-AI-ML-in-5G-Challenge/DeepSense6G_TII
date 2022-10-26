@@ -416,14 +416,14 @@ def dataset_augmentation():
 		else:
 			augmentation_set = ConcatDataset([augmentation_set, augmentation_set_i])
 
-	# # lidar augmentation: total 2
-	# lidar_aug_num = 2
-	# for i in range(1, lidar_aug_num):
-	# 	augmentation_set_i = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config, test=False, augment={'camera':-1, 'lidar':i})
-	# 	if augmentation_set == []:
-	# 		augmentation_set = augmentation_set_i
-	# 	else:
-	# 		augmentation_set = ConcatDataset([augmentation_set, augmentation_set_i])
+	# lidar augmentation: total 2
+	lidar_aug_num = 2
+	for i in range(1, lidar_aug_num):
+		augmentation_set_i = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config, test=False, augment={'camera':-1, 'lidar':i})
+		if augmentation_set == []:
+			augmentation_set = augmentation_set_i
+		else:
+			augmentation_set = ConcatDataset([augmentation_set, augmentation_set_i])
 
 	return augmentation_set
 

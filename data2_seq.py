@@ -58,7 +58,7 @@ class CARLA_Data(Dataset):
 
             camera_dir = self.dataframe['unit1_rgb_'+stri][index]
             if self.augment['camera'] >= 0 and 'scenario31' in camera_dir:
-                camera_dir = re.sub('camera_data', 'camera_data_aug', camera_dir)
+                camera_dir = re.sub('camera_data/', 'camera_data_aug/', camera_dir)
                 camera_dir = camera_dir[:-4] + '_' + str(self.augment['camera']) + '.jpg'
                 add_fronts.append(camera_dir)
             else:
@@ -67,7 +67,7 @@ class CARLA_Data(Dataset):
 
             lidar_dir = self.dataframe['unit1_lidar_'+stri][index]
             if self.augment['lidar'] >= 0 and 'scenario31' in lidar_dir:
-                lidar_dir = re.sub('lidar_data', 'lidar_data_aug', lidar_dir)
+                lidar_dir = re.sub('lidar_data/', 'lidar_data_aug/', lidar_dir)
                 lidar_dir = lidar_dir[:-4] + '_' + str(self.augment['lidar']) + '.ply'
                 add_lidars.append(lidar_dir)
             else:
