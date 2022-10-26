@@ -5,6 +5,7 @@ class GlobalConfig:
 	# Data
     seq_len = 1 # input timesteps
     pred_len = 4 # future waypoints predicted
+  
 
     root_dir = '/home/tiany0c/Downloads/transfuser-cvpr2021/data/14_weathers_minimal_data/'
     train_towns = ['Town01', 'Town02', 'Town03', 'Town04', 'Town06']

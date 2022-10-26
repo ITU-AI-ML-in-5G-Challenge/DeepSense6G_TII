@@ -13,14 +13,19 @@ import open3d as o3d
 import torchvision.transforms as transforms
 from scipy import stats
 import utm
+import cv2
 class CARLA_Data(Dataset):
-    def __init__(self, root, root_csv, config):
+    def __init__(self, root, root_csv, config, test=False):
 
         self.dataframe = pd.read_csv(root+root_csv)
         self.root=root
         self.seq_len = config.seq_len
         self.gps_data = []
         self.pos_input_normalized = Normalize_loc(root,self.dataframe)
+        self.test = test
+        self.add_velocity = config.add_velocity
+        self.add_mask = config.add_mask
+        self.enhanced = config.enhanced
 
     def __len__(self):
         """Returns the length of the dataset. """
@@ -31,17 +36,19 @@ class CARLA_Data(Dataset):
         data = dict()
         data['fronts'] = []
         data['lidars'] = []
-        data['beam'] = []
-        data['beamidx'] = []
+
         data['radars'] = []
         data['gps'] = self.pos_input_normalized[index,:,:]
+        data['scenario'] = []
+        data['loss_weight'] = []
+
         PT=[]
         file_sep = '/'
         add_fronts = []
         add_lidars = []
         add_radars = []
-        instanceidx=['1','2','5']
-        # instanceidx=['1','2', '3', '4', '5']
+        # instanceidx=['1','2','5']
+        instanceidx=['1','2', '3', '4', '5']
 
         for stri in instanceidx:
             add_fronts.append(self.dataframe['unit1_rgb_'+stri][index])
@@ -50,108 +57,98 @@ class CARLA_Data(Dataset):
             add_radars.append(add_radars1[:29] + '_ang' + add_radars1[29:])
             #add_radars.append(add_radars1[:29] + '_vel' + add_radars1[29:])
             #add_radars.append(add_radars1[:29] + '_cube' + add_radars1[29:])
-        beamidx=self.dataframe['unit1_beam'][index]-1
-        x_data = range(max(beamidx-5,0),min(beamidx+5,63)+1)
-        y_data = stats.norm.pdf(x_data, beamidx, 0.5)
-        data_beam=np.zeros((64))
-        data_beam[x_data]=y_data*1.25
+
         self.seq_len = len(instanceidx)
 
+        # check which scenario is the data sample associated 
+        scenarios = ['scenario31', 'scenario32', 'scenario33', 'scenario34']
+        loss_weights = [1.0, 1.0, 1.0, 1.0]
+        # loss_weights = [227.2727, 3.5804, 2.9112, 2.6824]
+
+        for i in range(len(scenarios)):
+            s = scenarios[i]
+            if s in self.dataframe['unit1_rgb_5'][index]:
+                data['scenario'] = s
+                data['loss_weight'] = loss_weights[i]
+                break
+
         for i in range(self.seq_len):
+            if 'scenario31' in add_fronts[i] or 'scenario32' in add_fronts[i]:
+                imgs = np.array(Image.open(self.root + add_fronts[i]).resize((256, 256)))
+                seg = np.array(Image.open(self.root+add_fronts[i][:30]+'_seg'+add_fronts[i][30:]).resize((256,256)))
+                imgs = cv2.addWeighted(imgs, 0.8, seg, 0.2, 0)
+            else:
+                if self.add_mask & self.enhanced:
+                    raise Exception("mask or enhance, both are not possible")
+                if self.add_mask:
+                    imgs = np.array(
+                        Image.open(self.root + add_fronts[i][:30] + '_mask' + add_fronts[i][30:]).resize((256, 256)))
+                elif self.enhanced:
+                    imgs = np.array(
+                        Image.open(self.root + add_fronts[i]).resize((256, 256)))
+                else:
+                    imgs = np.array(Image.open(self.root + add_fronts[i][:30]+'_raw'+add_fronts[i][30:]).resize((256, 256)))
             data['fronts'].append(torch.from_numpy(np.transpose(np.array(Image.open(self.root+add_fronts[i]).resize((256,256))),(2,0,1))))
-            data['radars'].append(torch.from_numpy(np.expand_dims(np.load(self.root+add_radars[i]),0)))
+            radar_ang = np.expand_dims(np.load(self.root + add_radars[i]), 0)
+            if self.add_velocity:
+                radar_vel = np.expand_dims(np.load(self.root + add_radars[i].replace('ang','vel')), 0)
+                data['radars'].append(torch.from_numpy(np.concatenate([radar_ang, radar_vel], 0)))
+            else:
+                data['radars'].append(torch.from_numpy(radar_ang))
+            # data['radars'].append(torch.from_numpy(np.expand_dims(np.load(self.root+add_radars[i]),0)))
             #lidar data
             PT = np.asarray(o3d.io.read_point_cloud(self.root+add_lidars[i]).points)
-            PT = lidar_to_histogram_features(PT)
+            PT = lidar_to_histogram_features(PT, add_lidars[i])
             data['lidars'].append(PT)
+
+        if not self.test:
+            data['beam'] = []
+            data['beamidx'] = []
+            beamidx = self.dataframe['unit1_beam'][index] - 1
+            x_data = range(max(beamidx - 5, 0), min(beamidx + 5, 63) + 1)
+            y_data = stats.norm.pdf(x_data, beamidx, 0.5)
+            data_beam = np.zeros((64))
+            data_beam[x_data] = y_data * 1.25
             data['beam'].append(data_beam)
             data['beamidx'].append(beamidx)
 
-
-        return data
-    
-class CARLA_Data_Test(Dataset):
-    def __init__(self, root, root_csv, config):
-
-        self.dataframe = pd.read_csv(root+root_csv)
-        self.root=root
-        self.seq_len = config.seq_len
-        self.gps_data = []
-        self.pos_input_normalized = Normalize_loc(root,self.dataframe)
-
-    def __len__(self):
-        """Returns the length of the dataset. """
-        return self.dataframe.shape[0]
-
-    def __getitem__(self, index):
-        """Returns the item at index idx. """
-        data = dict()
-        data['fronts'] = []
-        data['lidars'] = []
-        # data['beam'] = []
-        # data['beamidx'] = []
-        data['radars'] = []
-        data['gps'] = self.pos_input_normalized[index,:,:]
-        PT=[]
-        file_sep = '/'
-        add_fronts = []
-        add_lidars = []
-        add_radars = []
-        instanceidx=['1','2','5']
-        # instanceidx=['1','2', '3', '4', '5']
-
-        for stri in instanceidx:
-            add_fronts.append(self.dataframe['unit1_rgb_'+stri][index])
-            add_lidars.append(self.dataframe['unit1_lidar_'+stri][index])
-            add_radars1 = self.dataframe['unit1_radar_'+stri][index]
-            add_radars.append(add_radars1[:29] + '_ang' + add_radars1[29:])
-            #add_radars.append(add_radars1[:29] + '_vel' + add_radars1[29:])
-            #add_radars.append(add_radars1[:29] + '_cube' + add_radars1[29:])
-        # beamidx=self.dataframe['unit1_beam'][index]-1
-        # x_data = range(max(beamidx-5,0),min(beamidx+5,63)+1)
-        # y_data = stats.norm.pdf(x_data, beamidx, 0.5)
-        # data_beam=np.zeros((64))
-        # data_beam[x_data]=y_data*1.25
-        self.seq_len = len(instanceidx)
-
-        for i in range(self.seq_len):
-            data['fronts'].append(torch.from_numpy(np.transpose(np.array(Image.open(self.root+add_fronts[i]).resize((256,256))),(2,0,1))))
-            data['radars'].append(torch.from_numpy(np.expand_dims(np.load(self.root+add_radars[i]),0)))
-            #lidar data
-            PT = np.asarray(o3d.io.read_point_cloud(self.root+add_lidars[i]).points)
-            PT = lidar_to_histogram_features(PT)
-            data['lidars'].append(PT)
-            # data['beam'].append(data_beam)
-            # data['beamidx'].append(beamidx)
-            
         return data
 
-def lidar_to_histogram_features(lidar, crop=256):
+        
+
+def lidar_to_histogram_features(lidar, address):
     """
     Convert LiDAR point cloud into 2-bin histogram over 256x256 grid
     """
-    def splat_points(point_cloud):
+    def splat_points(point_cloud,addr):
         # 256 x 256 grid
         pixels_per_meter = 8
         hist_max_per_pixel = 5
         x_meters_max = 50
         y_meters_max = 50
-        xbins = np.linspace(-x_meters_max, x_meters_max+1, 257)
+        xbins = np.linspace(-x_meters_max, 0, 257)
         ybins = np.linspace(-y_meters_max, y_meters_max, 257)
+        if 'scenario31' in addr:
+            xbins = np.linspace(-70, 0, 257)
+            ybins = np.linspace(-25, 14, 257)
+        elif 'scenario32' in addr:
+            xbins = np.linspace(-60, 0, 257)
+            ybins = np.linspace(-40, 5.5, 257)
+        elif 'scenario33' in addr:
+            xbins = np.linspace(-50, 0, 257)
+            ybins = np.linspace(-12, 7, 257)
+        elif 'scenario34' in addr:
+            xbins = np.linspace(-50, 0, 257)
+            ybins = np.linspace(-20, 10, 257)
+
         hist = np.histogramdd(point_cloud[...,:2], bins=(xbins, ybins))[0]
         hist[hist>hist_max_per_pixel] = hist_max_per_pixel
         overhead_splat = hist/hist_max_per_pixel
         return overhead_splat
-    # idx=lidar[:,2]<2
-    # lidar = lidar[idx, :]
 
-    below = lidar[lidar[...,2]<=-2.0]
-    above = lidar[lidar[...,2]>-2.0]
-    below_features = splat_points(below)
-    above_features = splat_points(above)
-    features = np.stack([below_features, above_features], axis=-1)
-    features = np.transpose(features, (2, 0, 1)).astype(np.float32)
-    return features
+    lidar_feature = splat_points(lidar,address)
+    lidar_feature = lidar_feature[np.newaxis, :, :]
+    return lidar_feature
 
 def xy_from_latlong(lat_long):
     """

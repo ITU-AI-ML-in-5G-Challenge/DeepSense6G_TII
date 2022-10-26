@@ -1,6 +1,10 @@
 import argparse
+import csv
 import json
+from operator import index
 import os
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
+from pyparsing import col
 from tqdm import tqdm
 import pandas as pd
 
@@ -12,12 +16,13 @@ from torch.utils.tensorboard import SummaryWriter
 import torch.nn.functional as F
 import torch.nn as nn
 from torch.autograd import Variable
+from scheduler import CyclicCosineDecayLR
 
 torch.backends.cudnn.benchmark = True
 
 from config import GlobalConfig
 from model2 import TransFuser
-from data2 import CARLA_Data,CARLA_Data_Test
+from data2 import CARLA_Data
 
 import matplotlib.pyplot as plt
 import torchvision
@@ -25,18 +30,28 @@ import torchvision
 torch.cuda.empty_cache()
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--id', type=str, default='transfuser', help='Unique experiment identifier.')
+parser.add_argument('--id', type=str, default='transfuser_segmentation', help='Unique experiment identifier.')
 parser.add_argument('--device', type=str, default='cuda', help='Device to use')
-parser.add_argument('--epochs', type=int, default=70, help='Number of train epochs.')
-parser.add_argument('--lr', type=float, default=3e-4, help='Learning rate.')
+parser.add_argument('--epochs', type=int, default=200, help='Number of train epochs.')
+parser.add_argument('--lr', type=float, default=2e-4, help='Learning rate.')
+parser.add_argument('--scheduler', type=int, default=0, help='use scheduler to control the learning rate')
 parser.add_argument('--val_every', type=int, default=1, help='Validation frequency (epochs).')
 parser.add_argument('--shuffle_every', type=int, default=6, help='Shuffle the dataset frequency (epochs).')
-parser.add_argument('--batch_size', type=int, default=24, help='Batch size')
+parser.add_argument('--batch_size', type=int, default=40, help='Batch size')
 parser.add_argument('--logdir', type=str, default='log', help='Directory to log data to.')
+parser.add_argument('--loss', type=str, default='ce', help='crossentropy or focal loss')
+parser.add_argument('--add_velocity', type = int, default=1, help='concatenate velocity map with angle map')
+parser.add_argument('--add_mask', type=int, default=0, help='add mask to the camera data')
+parser.add_argument('--enhanced', type=int, default=0, help='use enhanced camera data')
+parser.add_argument('--load_previous_best', type=int, default=1, help='load previous best pretrained model ')
+parser.add_argument('--temp_coef', type=int, default=0, help='apply temperature coefficience on the target')
+parser.add_argument('--train_adapt_together', type=int, default=0, help='combine train and adaptation dataset together')
+
+
+
 
 args = parser.parse_args()
 args.logdir = os.path.join(args.logdir, args.id)
-
 writer = SummaryWriter(log_dir=args.logdir)
 # class_weights=[174.109375, 3.28508255, 2.20391614, 2.48727679, 2.00125718, 0.90212111, 1.33930288, 1.29932369, 1.85222739, 0.52128555, 0.61960632, 1.27087135, 0.5440918,0.80981105, 1.48811432, 0.32912925, 0.28127524, 1.51399457, 0.61960632, 0.32850825, 0.5260102,0.20876424, 0.69366285, 3.28508255, 1.20909288, 0.58425965, 1.31901042, 0.76700165, 0.56713151, 1.40410786, 1.16072917, 1.19252997, 0.59626498, 0.57085041, 4.35273437, 0.84519114, 0.60037716, 0.59020127, 0.40117368, 1.52727522, 1.37093996, 0.47701199, 0.633125, 0.99491071, 1.64254127, 2.85425205, 2.80821573, 2.20391614, 3.05455044, 5.61643145, 1.65818452, 8.29092262, 4.97455357, 1.77662628, 2.26116071, 5.61643145, 5.27604167, 9.16365132, 5.27604167,10.88183594,12.43638393, 9.16365132,29.01822917, 29.01822917]
 # class_weights=torch.tensor(class_weights,dtype=torch.float).cuda()
@@ -58,10 +73,17 @@ class Engine(object):
 		self.DBA = []
 		self.bestval = 0
 		# self.criterion = torch.nn.CrossEntropyLoss(weight=class_weights,reduction='mean')
-		# self.criterion = torch.nn.CrossEntropyLoss( reduction='mean')
-		self.criterion =  FocalLoss(gamma= 0)
-		
-		# self.criterion = torchvision.ops.sigmoid_focal_loss(reduction='mean')
+		# # self.criterion = torch.nn.CrossEntropyLoss( reduction='mean')
+		# self.criterion =  FocalLoss(gamma= 0)
+		#
+		# # self.criterion = torchvision.ops.sigmoid_focal_loss(reduction='mean')
+
+		if args.loss == 'ce':
+			self.criterion = torch.nn.CrossEntropyLoss( reduction='mean')
+		elif args.loss == 'focal':
+			# self.criterion =  FocalLoss(gamma= 2)
+			self.criterion = FocalLoss1()
+
 
 	def train(self):
 		loss_epoch = 0.
@@ -97,11 +119,11 @@ class Engine(object):
 			gt_beams = data['beam'][0].to(args.device, dtype=torch.float32)
 
 			running_acc += (torch.argmax(pred_beams, dim=1) == gt_beamidx).sum().item()
-			# print('Pre',torch.argmax(pred_beams, dim=1))
-			# print(pred_beams[0,:])
-			# print(torch.argmax(pred_beams, dim=1) == gt_beamidx)
 
-			loss = self.criterion(pred_beams, gt_beams)
+			if args.temp_coef:
+				loss = self.criterion(pred_beams, gt_beams)
+			else:
+				loss = self.criterion(pred_beams, gt_beamidx)
 			gt_beam_all.append(data['beamidx'][0])
 
 			pred_beam_all.append(torch.argsort(pred_beams, dim=1, descending=True).cpu().numpy())
@@ -153,7 +175,11 @@ class Engine(object):
 				gt_beamidx = data['beamidx'][0].to(args.device, dtype=torch.long)
 				pred_beam_all.append(torch.argsort(pred_beams, dim=1, descending=True).cpu().numpy())
 				running_acc += (torch.argmax(pred_beams, dim=1) == gt_beamidx).sum().item()
-				wp_epoch += float(self.criterion(pred_beams, gt_beams))
+				if args.temp_coef:
+					loss = self.criterion(pred_beams, gt_beams)
+				else:
+					loss = self.criterion(pred_beams, gt_beamidx)
+				wp_epoch += float(loss)
 				num_batches += 1
 
 			pred_beam_all=np.squeeze(np.concatenate(pred_beam_all,0))
@@ -253,39 +279,21 @@ class Engine(object):
 			torch.save(optimizer.state_dict(), os.path.join(args.logdir, 'best_optim.pth'))
 			tqdm.write('====== Overwrote best model ======>')
 
+		elif args.load_previous_best:
+			model.load_state_dict(torch.load(os.path.join(args.logdir, 'best_model.pth')))
+			optimizer.load_state_dict(torch.load(os.path.join(args.logdir, 'best_optim.pth')))
+			tqdm.write('====== Load previous best model ======>')
 
-# class FocalLoss(nn.Module):
-#      def __init__(self, gamma=0, alpha=None, size_average=True):
-#          super(FocalLoss, self).__init__()
-#          self.gamma = gamma
-#          self.alpha = alpha
-#          if isinstance(alpha,(float,int,int)): self.alpha = torch.Tensor([alpha,1-alpha])
-#          if isinstance(alpha,list): self.alpha = torch.Tensor(alpha)
-#          self.size_average = size_average
 
-#      def forward(self, input, target):
-# #         # if input.dim()>2:
-# #         #     input = input.view(input.size(0),input.size(1),-1)  # N,C,H,W => N,C,H*W
-# #         #     input = input.transpose(1,2)    # N,C,H*W => N,H*W,C
-# #         #     input = input.contiguous().view(-1,input.size(2))   # N,H*W,C => N*H*W,C
-# #         # target = target.view(-1,1)
+class FocalLoss1(nn.Module):
+	def __init__(self, gamma=2, alpha=0.25):
+		super(FocalLoss1, self).__init__()
+		self.gamma = gamma
+		self.alpha = alpha
+	def __call__(self, input, target):
+		loss = torchvision.ops.sigmoid_focal_loss(input, target, alpha=self.alpha,gamma=self.gamma,reduction='mean')
+		return loss
 
-#          logpt = F.log_softmax(input)
-#          # logpt = logpt.gather(1,target)
-#          logpt = logpt.gather(1, target.type(torch.int64))
-
-#          logpt = logpt.view(-1)
-#          pt = Variable(logpt.data.exp())
-
-#          if self.alpha is not None:
-#              if self.alpha.type()!=input.data.type():
-#                  self.alpha = self.alpha.type_as(input.data)
-#              at = self.alpha.gather(0,target.data.view(-1))
-#              logpt = logpt * Variable(at)
-
-#          loss = -1 * (1-pt)**self.gamma * logpt
-#          if self.size_average: return loss.mean()
-#          else: return loss.sum()
 
 
 class FocalLoss(nn.modules.loss._WeightedLoss):
@@ -301,25 +309,6 @@ class FocalLoss(nn.modules.loss._WeightedLoss):
         focal_loss = ((1 - pt) ** self.gamma * ce_loss).mean()
         return focal_loss
 
-# class FocalLoss(nn.Module):
-    
-#     def __init__(self, weight=None, 
-#                  gamma=2., reduction='none'):
-#         nn.Module.__init__(self)
-#         self.weight = weight
-#         self.gamma = gamma
-#         self.reduction = reduction
-        
-#     def forward(self, input_tensor, target_tensor):
-#         log_prob = F.log_softmax(input_tensor, dim=-1)
-#         prob = torch.exp(log_prob)
-#         return F.nll_loss(
-#             ((1 - prob) ** self.gamma) * log_prob, 
-#             target_tensor, 
-#             weight = self.weight,
-#             reduction = self.reduction
-#         )
-
 
 def save_pred_to_csv(y_pred, top_k=[1, 2, 3], target_csv='beam_pred.csv'):
 	"""
@@ -329,6 +318,7 @@ def save_pred_to_csv(y_pred, top_k=[1, 2, 3], target_csv='beam_pred.csv'):
 	cols = [f'top-{i} beam' for i in top_k]
 	df = pd.DataFrame(data=y_pred[:, np.array(top_k) - 1]+1, columns=cols)
 	df.index.name = 'index'
+	df.index+=1
 	df.to_csv(target_csv)
 def compute_acc(y_pred, y_true, top_k=[1,2,3]):
     """ Computes top-k accuracy given prediction and ground truth labels."""
@@ -344,8 +334,6 @@ def compute_acc(y_pred, y_true, top_k=[1,2,3]):
             total_hits[k_idx] += 1 if hit else 0
     # Average the number of correct guesses (over the total samples)
     return np.round(total_hits / len(y_true)*100, 4)
-
-
 def compute_DBA_score(y_pred, y_true, max_k=3, delta=5):
 	"""
     The top-k MBD (Minimum Beam Distance) as the minimum distance
@@ -368,40 +356,69 @@ def compute_DBA_score(y_pred, y_true, max_k=3, delta=5):
 
 	return np.mean(yk)
 
-
-
-
-
-
-
 # Config
 config = GlobalConfig()
+config.add_velocity = args.add_velocity
+config.add_mask = args.add_mask
+config.enhanced = args.enhanced
 
 # trainval_root='/home/tiany0c/Downloads/MultiModeBeamforming/0Multi_Modal/'
 
-# train_root_csv='ml_challenge_dev_multi_modal1.csv'
 
 # trainval_root= '/home/tiany0c/Downloads/MultiModeBeamforming/Adaptation_dataset_multi_modal/'
+# trainval_root='/efs/data/Multi_Modal/'
+# train_root_csv='ml_challenge_dev_multi_modal.csv'
+# os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
 
 trainval_root='/efs/data/Multi_Modal/'
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+
 train_root_csv='ml_challenge_dev_multi_modal.csv'
 # val_root='/home/tiany0c/Downloads/MultiModeBeamforming/Adaptation_dataset_multi_modal/'
 val_root='/efs/data/Adaptation_dataset_multi_modal/'
+
 val_root_csv='ml_challenge_data_adaptation_multi_modal.csv'
-# test_root='/home/tiany0c/Downloads/MultiModeBeamforming/Multi_Modal_Test/'
-test_root='/efs/data/Multi_Modal_Test/'
+test_root='/home/tiany0c/Downloads/MultiModeBeamforming/Multi_Modal_Test/'
+# test_root='/efs/data/Multi_Modal_Test/'
 test_root_csv='ml_challenge_test_multi_modal.csv'
 # Data
-train_set = CARLA_Data(root=trainval_root, root_csv=train_root_csv, config=config)
+train_set = CARLA_Data(root=trainval_root, root_csv=train_root_csv, config=config, test=False)
 # train_set = CARLA_Data(root=test_root, root_csv=test_root_csv, config=config)
-val_set = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config)
-test_set = CARLA_Data_Test(root=test_root, root_csv=test_root_csv, config=config)
+val_set = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config, test=False)
+test_set = CARLA_Data(root=test_root, root_csv=test_root_csv, config=config, test=True)
 train_size, val_size= len(train_set), len(val_set)
 # train_size = int(0.01 * len(train_set))
 # train_set, _= torch.utils.data.random_split(train_set, [train_size, len(train_set) - train_size])
-print(len(train_set),len(val_set) )
-dataloader_train = DataLoader(train_set, batch_size=args.batch_size, shuffle=False, num_workers=8, pin_memory=True)
+print(len(train_set),len(val_set),len(test_set))
+
+# Create a dataset for each scenario: 
+
+def createDataset(InputFile, OutputFile, Keyword):
+
+	RawFile = InputFile
+	CleanedFile = OutputFile +'.csv'
+	#Keyword = 'scenario34'
+	with open(RawFile) as infile, open(CleanedFile, 'w') as outfile:
+    
+		reader = csv.reader(infile)
+		writer = csv.writer(outfile)
+		for row in reader:
+			try:
+ 				if Keyword in row[1]:
+						writer.writerow(row)
+			except:
+				   continue
+
+					
+dataset_scenario_31 = createDataset('ml_challenge_dev_multi_modal.csv', 'scenario_32', 'scenario31')
+dataset_scenario_32 = createDataset('ml_challenge_dev_multi_modal.csv', 'scenario_32', 'scenario32')
+dataset_scenario_33 = createDataset('ml_challenge_dev_multi_modal.csv', 'scenario_32', 'scenario33')
+dataset_scenario_34 = createDataset('ml_challenge_dev_multi_modal.csv', 'scenario_32', 'scenario34')
+
+
+# train_set, _= torch.utils.data.random_split(train_set, [train_size, len(train_set) - train_size])		
+
+
+dataloader_train = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=8, pin_memory=True)
 dataloader_val = DataLoader(val_set, batch_size=args.batch_size, shuffle=False, num_workers=8, pin_memory=False)
 dataloader_test = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=8, pin_memory=False)
 
@@ -410,9 +427,22 @@ dataloader_test = DataLoader(test_set, batch_size=args.batch_size, shuffle=False
 # Model
 
 model = TransFuser(config, args.device)
-model = torch.nn.DataParallel(model, device_ids = [0])
+
+# model = torch.nn.DataParallel(model, device_ids = [0])
+
+model = torch.nn.DataParallel(model, device_ids = [0,1])
+
 optimizer = optim.AdamW(model.parameters(), lr=args.lr)
-scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
+
+if args.scheduler:
+	# scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
+	scheduler = CyclicCosineDecayLR(optimizer,
+	                                init_decay_epochs=15,
+	                                min_decay_lr=1e-6,
+	                                restart_interval = 10,
+	                                restart_lr=5e-5,
+	                                warmup_epochs=10,
+	                                warmup_start_lr=1e-6)
 trainer = Engine()
 
 model_parameters = filter(lambda p: p.requires_grad, model.parameters())
@@ -445,15 +475,19 @@ elif os.path.isfile(os.path.join(args.logdir, 'recent.log')):
 with open(os.path.join(args.logdir, 'args.txt'), 'w') as f:
 	json.dump(args.__dict__, f, indent=2)
 
+# trainer.test()
+
 for epoch in range(trainer.cur_epoch, args.epochs): 
 	
 	print('epoch:',epoch)
-	print('lr', scheduler.get_lr())
+
 	# trainer.test()
 	trainer.train()
 	trainer.validate()
 	trainer.save()
-	scheduler.step()
+	if args.scheduler:
+		print('lr', scheduler.get_lr())
+		scheduler.step()
 
 	# torch.save(model.state_dict(), os.path.join(args.logdir, 'current_model.pth'))
 	# torch.save(optimizer.state_dict(), os.path.join(args.logdir, 'current_optim.pth'))

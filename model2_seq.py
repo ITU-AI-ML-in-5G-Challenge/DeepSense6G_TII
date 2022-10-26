@@ -269,8 +269,11 @@ class Encoder(nn.Module):
         self.config = config
         self.avgpool = nn.AdaptiveAvgPool2d((self.config.vert_anchors, self.config.horz_anchors))
         self.image_encoder = ImageCNN(512, normalize=True)
-        self.lidar_encoder = LidarEncoder(num_classes=512, in_channels=2)
-        self.radar_encoder = LidarEncoder(num_classes=512, in_channels=1)
+        self.lidar_encoder = LidarEncoder(num_classes=512, in_channels=1)
+        if config.add_velocity:
+            self.radar_encoder = LidarEncoder(num_classes=512, in_channels=2)
+        else:
+            self.radar_encoder = LidarEncoder(num_classes=512, in_channels=1)
 
         self.vel_emb1 = nn.Linear(2, 64)
         self.vel_emb2 = nn.Linear(64, 128)
@@ -499,8 +502,8 @@ class TransFuser(nn.Module):
                             nn.ReLU(inplace=True),
                             nn.Linear(128, 64),
                         ).to(self.device)
-        self.decoder = nn.GRUCell(input_size=2, hidden_size=64).to(self.device)
-        self.output = nn.Linear(64, 2).to(self.device)
+        # self.decoder = nn.GRUCell(input_size=2, hidden_size=64).to(self.device)
+        # self.output = nn.Linear(64, 2).to(self.device)
         
     def forward(self, image_list, lidar_list, radar_list, velocity):
         '''

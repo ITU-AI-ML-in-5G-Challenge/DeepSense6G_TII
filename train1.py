@@ -300,13 +300,14 @@ np.random.seed(seed) # numpy
 torch.manual_seed(seed) # torch+CPU
 torch.cuda.manual_seed(seed) # torch+GPU
 torch.use_deterministic_algorithms(False)
+g = torch.Generator()
+g.manual_seed(seed)
 def seed_worker(worker_id):
     worker_seed = torch.initial_seed() % 2**32
     numpy.random.seed(worker_seed)
     random.seed(worker_seed)
 
-g = torch.Generator()
-g.manual_seed(0)
+
 os.environ["CUBLAS_WORKSPACE_CONFIG"]=":4096:8"
 
 config = GlobalConfig()
