@@ -100,6 +100,7 @@ for scenario_idx in range(len(scenario_list)):
 
 
 ########################### Preprocessing original data ##########################################
+
 for scenario_idx in range(len(scenario_list)):
 
     lidar_background="/efs/data/preprocess_lidar/Background/"+scenario_list[scenario_idx]+"_background.ply"
