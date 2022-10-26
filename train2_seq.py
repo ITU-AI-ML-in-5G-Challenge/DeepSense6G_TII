@@ -29,14 +29,14 @@ import torchvision
 torch.cuda.empty_cache()
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--id', type=str, default='focal_loss_seqlen5', help='Unique experiment identifier.')
+parser.add_argument('--id', type=str, default='test', help='Unique experiment identifier.')
 parser.add_argument('--device', type=str, default='cuda', help='Device to use')
 parser.add_argument('--epochs', type=int, default=150, help='Number of train epochs.')
 parser.add_argument('--lr', type=float, default=2e-4, help='Learning rate.')
 parser.add_argument('--val_every', type=int, default=1, help='Validation frequency (epochs).')
 parser.add_argument('--shuffle_every', type=int, default=6, help='Shuffle the dataset frequency (epochs).')
 parser.add_argument('--batch_size', type=int, default=24, help='Batch size')	# default=24
-parser.add_argument('--logdir', type=str, default='/ibex/scratch/tiany0c/log', help='Directory to log data to.')
+parser.add_argument('--logdir', type=str, default='/efs/qiyang/DeepSense6G_TII/log', help='Directory to log data to.')
 parser.add_argument('--add_velocity', type = int, default=1, help='concatenate velocity map with angle map')
 parser.add_argument('--add_mask', type=int, default=0, help='add mask to the camera data')
 parser.add_argument('--enhanced', type=int, default=0, help='use enhanced camera data')
@@ -47,6 +47,9 @@ parser.add_argument('--temp_coef', type=int, default=0, help='apply temperature 
 parser.add_argument('--train_adapt_together', type=int, default=0, help='combine train and adaptation dataset together')
 parser.add_argument('--finetune', type=int, default=0, help='first train on development set and finetune on 31-34 set')
 parser.add_argument('--Test', type=int, default=0, help='Test')
+parser.add_argument('--augmentation', type=int, default=1, help='data augmentation of camera and lidar')
+
+
 args = parser.parse_args()
 args.logdir = os.path.join(args.logdir, args.id)
 
@@ -398,6 +401,33 @@ def compute_DBA_score(y_pred, y_true, max_k=3, delta=5):
 	return np.mean(yk)
 
 
+def dataset_augmentation():
+
+	# return augmentation on input dataset	
+
+	# camera augmentation: total 8
+
+	camera_aug_num = 7
+	augmentation_set = []
+	for i in range(1, camera_aug_num + 1):
+		augmentation_set_i = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config, test=False, augment={'camera':i, 'lidar':-1})
+		if augmentation_set == []:
+			augmentation_set = augmentation_set_i
+		else:
+			augmentation_set = ConcatDataset([augmentation_set, augmentation_set_i])
+
+	# # lidar augmentation: total 2
+	# lidar_aug_num = 2
+	# for i in range(1, lidar_aug_num):
+	# 	augmentation_set_i = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config, test=False, augment={'camera':-1, 'lidar':i})
+	# 	if augmentation_set == []:
+	# 		augmentation_set = augmentation_set_i
+	# 	else:
+	# 		augmentation_set = ConcatDataset([augmentation_set, augmentation_set_i])
+
+	return augmentation_set
+
+
 # Config
 config = GlobalConfig()
 config.add_velocity = args.add_velocity
@@ -431,28 +461,42 @@ def createDataset(InputFile, OutputFile, Keyword):
 						writer.writerow(row)
 			except:
 				   continue
-# os.environ["CUDA_VISIBLE_DEVICES"] = "3"
-data_root='/home/tiany0c/Downloads'
-data_root='.'
-trainval_root=data_root+'/MultiModeBeamforming/0Multi_Modal/'
+# # os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+# data_root='/home/tiany0c/Downloads'
+# data_root='.'
+# trainval_root=data_root+'/MultiModeBeamforming/Multi_Modal/'
+
+data_root = '/efs/data'
+trainval_root=data_root+'/Multi_Modal/'
+
+
 # train_root_csv='ml_challenge_dev_multi_modal1.csv'
 # trainval_root= data_root+'/MultiModeBeamforming/Adaptation_dataset_multi_modal/'
 
 # trainval_root= '/efs/data/Multi_Modal/'
-train_root_csv='ml_challenge_dev_multi_modal1.csv'
+# train_root_csv='ml_challenge_dev_multi_modal1.csv'
+
+train_root_csv='ml_challenge_dev_multi_modal.csv'
+
 
 # trainval_root='/efs/data/Adaptation_dataset_multi_modal/'
 # train_root_csv='ml_challenge_data_adaptation_multi_modal.csv'
 for keywords in ['scenario32','scenario33','scenario34']:
 	createDataset(trainval_root+train_root_csv, trainval_root+keywords,keywords)
 	print(trainval_root+keywords)
-val_root=data_root+'/MultiModeBeamforming/Adaptation_dataset_multi_modal/'
+
+# val_root=data_root+'/MultiModeBeamforming/Adaptation_dataset_multi_modal/'
+val_root = data_root + '/Adaptation_dataset_multi_modal/'
+
 # val_root='/efs/data/Adaptation_dataset_multi_modal/'
 val_root_csv='ml_challenge_data_adaptation_multi_modal.csv'
 for keywords in ['scenario31','scenario32','scenario33']:
 	createDataset(val_root+val_root_csv, val_root+keywords,keywords)
 	print(val_root + keywords)
-test_root=data_root+'/MultiModeBeamforming/Multi_Modal_Test/'
+
+# test_root=data_root+'/MultiModeBeamforming/Multi_Modal_Test/'
+test_root = data_root + '/Multi_Modal_Test/'
+
 # test_root='/efs/data/Multi_Modal_Test/'
 test_root_csv='ml_challenge_test_multi_modal.csv'
 
@@ -461,6 +505,8 @@ test_root_csv='ml_challenge_test_multi_modal.csv'
 
 # Data
 # train_set = CARLA_Data(root=test_root, root_csv=test_root_csv, config=config)
+
+
 
 
 
@@ -473,6 +519,12 @@ if args.finetune:
 else:
 	development_set = CARLA_Data(root=trainval_root, root_csv=train_root_csv, config=config,
 								 test=False)  # development dataset 11k samples
+
+	# add augmentation to develoment set
+	if args.augmentation:
+		augmentation_set = dataset_augmentation()
+		development_set = ConcatDataset([development_set, augmentation_set])
+
 	train_size = int(0.8 * len(development_set))
 	train_set, val_set = torch.utils.data.random_split(development_set,
 														  [train_size, len(development_set) - train_size])
