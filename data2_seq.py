@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import open3d as o3d
 import torchvision.transforms as transforms
 from scipy import stats
+from sklearn.preprocessing import normalize
 import utm
 import cv2
 class CARLA_Data(Dataset):
@@ -192,12 +193,15 @@ def Normalize_loc(root, dataframe):
 
     pos_diff = pos_ue_cart - pos_bs_cart
 
-    pos_min = np.min(pos_diff, axis=0)
-    pos_max = np.max(pos_diff, axis=0)
+    # pos_min = np.min(pos_diff, axis=0)
+    # pos_max = np.max(pos_diff, axis=0)
+    pos_max = np.array([40.20955233, 52.31386139])
+    pos_min = np.array([ -7.18029715, -97.55563452])
 
     # Normalize and unstack
     pos_stacked_normalized = (pos_diff - pos_min) / (pos_max - pos_min)
     pos_input_normalized = np.zeros((n_samples, 2, 2))
     pos_input_normalized[:, 0, :] = pos_stacked_normalized[:n_samples]
     pos_input_normalized[:, 1, :] = pos_stacked_normalized[n_samples:]
+    print(pos_input_normalized)
     return pos_input_normalized

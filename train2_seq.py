@@ -25,7 +25,7 @@ from data2_seq import CARLA_Data
 import matplotlib.pyplot as plt
 import torchvision
 
-
+kw='final_'
 torch.cuda.empty_cache()
 
 parser = argparse.ArgumentParser()
@@ -157,8 +157,8 @@ class Engine(object):
 			if DBA>self.DBAft[-1]:
 				self.DBAft.append(DBA)
 				print(DBA, self.DBAft[-2], 'save new model')
-				torch.save(model.state_dict(), os.path.join(args.logdir, 'finetune_on_' + kw + 'model.pth'))
-				torch.save(optimizer.state_dict(), os.path.join(args.logdir, 'finetune_on_' + kw + 'optim.pth'))
+				torch.save(model.state_dict(), os.path.join(args.logdir, 'all_finetune_on_' + kw + 'model.pth'))
+				torch.save(optimizer.state_dict(), os.path.join(args.logdir, 'all_finetune_on_' + kw + 'optim.pth'))
 			else:
 				print('best',self.DBAft[-1])
 
@@ -464,18 +464,29 @@ test_root_csv='ml_challenge_test_multi_modal.csv'
 
 
 
-if args.finetune:
+if args.finetune and not args.Test:
 	adaptation_set = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config,
 								test=False)  # adaptation dataset 100 samples
 	dev34_set = CARLA_Data(root=trainval_root, root_csv='scenario34.csv', config=config, test=False)
 	dev34_set, _ = torch.utils.data.random_split(dev34_set, [25, len(dev34_set) - 25])
-	development_set = ConcatDataset([adaptation_set, dev34_set])
-else:
+	train_set = ConcatDataset([adaptation_set, dev34_set])
+	print('train_set:', len(train_set))
+elif not args.train_adapt_together and not args.Test:
 	development_set = CARLA_Data(root=trainval_root, root_csv=train_root_csv, config=config,
 								 test=False)  # development dataset 11k samples
 	train_size = int(0.8 * len(development_set))
+	test_set = CARLA_Data(root=test_root, root_csv=test_root_csv, config=config, test=True)
 	train_set, val_set = torch.utils.data.random_split(development_set,
 														  [train_size, len(development_set) - train_size])
+	print('train_set:', train_size, 'val_set:', len(val_set), 'test_set:', len(test_set))
+	dataloader_val = DataLoader(val_set, batch_size=args.batch_size, shuffle=False, num_workers=8, pin_memory=False)
+if args.Test:
+	test_set = CARLA_Data(root=test_root, root_csv=test_root_csv, config=config, test=True)
+	print('test_set:', len(test_set))
+	dataloader_test = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=8, pin_memory=False)
+else:
+	dataloader_train = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=8, pin_memory=True,
+								  worker_init_fn=seed_worker, generator=g)
 
 # # split the adaptation set
 # train_subset_size = int(0.8 * len(adaptation_set))
@@ -483,8 +494,15 @@ else:
 if args.train_adapt_together and  args.finetune:
 	raise Exception('train on 31 and finetune can not be done at the same time' )
 if args.train_adapt_together and not args.finetune:
+	development_set = CARLA_Data(root=trainval_root, root_csv=train_root_csv, config=config,
+								 test=False)  # development dataset 11k samples
+	adaptation_set = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config,
+								test=False)  # adaptation dataset 100 samples
+
 	train_set = ConcatDataset([development_set, adaptation_set])
+	val_set = adaptation_set
 	train_size = len(train_set)
+
 # else:
 # 	train_size = len(development_set)
 # 	train_set = development_set
@@ -497,34 +515,32 @@ if args.train_adapt_together and not args.finetune:
 
 # val_set = adaptation_set
 
-test_set = CARLA_Data(root=test_root, root_csv=test_root_csv, config=config, test=True)
+
 
 # train_size = int(0.01 * len(train_set))
 # train_set, _= torch.utils.data.random_split(train_set, [train_size, len(train_set) - train_size])
 
 
-val_size = len(val_set)
+# val_size = len(val_set)
+#
+# print('train_set:', train_size,'val_set:', val_size, 'test_set:', len(test_set))
 
-print('train_set:', train_size,'val_set:', val_size, 'test_set:', len(test_set))
-dataloader_train = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=8, pin_memory=True, worker_init_fn=seed_worker, generator=g)
-dataloader_val = DataLoader(val_set, batch_size=args.batch_size, shuffle=False, num_workers=8, pin_memory=False)
-dataloader_test = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=8, pin_memory=False)
 
 
 # Model
 model = TransFuser(config, args.device)
 # model = torch.nn.DataParallel(model, device_ids = [2, 3])
 model = torch.nn.DataParallel(model)
-if args.finetune:
-	if isinstance(model, torch.nn.DataParallel):
-		for param in model.module.encoder.parameters():
-			param.requires_grad = False
-	else:
-		for param in model.encoder.parameters():
-			param.requires_grad = False
-	optimizer = optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=args.lr)
-else:
-	optimizer = optim.AdamW(model.parameters(), lr=args.lr)
+# if args.finetune:
+# 	if isinstance(model, torch.nn.DataParallel):
+# 		for param in model.module.encoder.parameters():
+# 			param.requires_grad = False
+# 	else:
+# 		for param in model.encoder.parameters():
+# 			param.requires_grad = False
+# 	optimizer = optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=args.lr)
+# else:
+optimizer = optim.AdamW(model.parameters(), lr=args.lr)
 if args.scheduler:
 	# scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
 	scheduler = CyclicCosineDecayLR(optimizer,
@@ -562,16 +578,17 @@ elif os.path.isfile(os.path.join(args.logdir, 'recent.log')):
 
 	# Load checkpoint
 	if args.finetune:
-		kw='best_'
-		if os.path.exists(os.path.join(args.logdir, 'finetune_on_'+ kw + 'model.pth')):
-			print('loading last finetune model')
-			model.load_state_dict(torch.load(os.path.join(args.logdir, 'finetune_on_'+ kw + 'model.pth')))
-			optimizer.load_state_dict(torch.load(os.path.join(args.logdir, 'finetune_on_' + kw + 'optim.pth')))
+
+		if os.path.exists(os.path.join(args.logdir, 'all_finetune_on_'+ kw + 'model.pth')):
+			print('loading last'+'all_finetune_on_'+ kw + 'model.pth')
+			model.load_state_dict(torch.load(os.path.join(args.logdir, 'all_finetune_on_'+ kw + 'model.pth')))
+			optimizer.load_state_dict(torch.load(os.path.join(args.logdir, 'all_finetune_on_' + kw + 'optim.pth')))
 		else:
 			print('loading '+kw+' model')
 			model.load_state_dict(torch.load(os.path.join(args.logdir, kw+'model.pth')))
 			# optimizer.load_state_dict(torch.load(os.path.join(args.logdir, kw+'optim.pth')))
 	else:
+		print('loading best_model')
 		model.load_state_dict(torch.load(os.path.join(args.logdir, 'best_model.pth')))
 
 
@@ -585,7 +602,7 @@ elif os.path.isfile(os.path.join(args.logdir, 'recent.log')):
 # Log args
 with open(os.path.join(args.logdir, 'args.txt'), 'w') as f:
 	json.dump(args.__dict__, f, indent=2)
-if args.Test==1:
+if args.Test:
 	trainer.test()
 	print('Test finish')
 else:
