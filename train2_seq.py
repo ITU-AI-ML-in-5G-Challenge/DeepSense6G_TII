@@ -25,18 +25,18 @@ from data2_seq import CARLA_Data
 import matplotlib.pyplot as plt
 import torchvision
 
-
+kw='final_'
 torch.cuda.empty_cache()
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--id', type=str, default='focal_loss_seqlen5', help='Unique experiment identifier.')
+parser.add_argument('--id', type=str, default='test', help='Unique experiment identifier.')
 parser.add_argument('--device', type=str, default='cuda', help='Device to use')
 parser.add_argument('--epochs', type=int, default=150, help='Number of train epochs.')
 parser.add_argument('--lr', type=float, default=2e-4, help='Learning rate.')
 parser.add_argument('--val_every', type=int, default=1, help='Validation frequency (epochs).')
 parser.add_argument('--shuffle_every', type=int, default=6, help='Shuffle the dataset frequency (epochs).')
 parser.add_argument('--batch_size', type=int, default=24, help='Batch size')	# default=24
-parser.add_argument('--logdir', type=str, default='/ibex/scratch/tiany0c/log', help='Directory to log data to.')
+parser.add_argument('--logdir', type=str, default='/efs/qiyang/DeepSense6G_TII/log', help='Directory to log data to.')
 parser.add_argument('--add_velocity', type = int, default=1, help='concatenate velocity map with angle map')
 parser.add_argument('--add_mask', type=int, default=0, help='add mask to the camera data')
 parser.add_argument('--enhanced', type=int, default=0, help='use enhanced camera data')
@@ -47,6 +47,9 @@ parser.add_argument('--temp_coef', type=int, default=0, help='apply temperature 
 parser.add_argument('--train_adapt_together', type=int, default=0, help='combine train and adaptation dataset together')
 parser.add_argument('--finetune', type=int, default=0, help='first train on development set and finetune on 31-34 set')
 parser.add_argument('--Test', type=int, default=0, help='Test')
+parser.add_argument('--augmentation', type=int, default=1, help='data augmentation of camera and lidar')
+
+
 args = parser.parse_args()
 args.logdir = os.path.join(args.logdir, args.id)
 
@@ -157,8 +160,8 @@ class Engine(object):
 			if DBA>self.DBAft[-1]:
 				self.DBAft.append(DBA)
 				print(DBA, self.DBAft[-2], 'save new model')
-				torch.save(model.state_dict(), os.path.join(args.logdir, 'finetune_on_' + kw + 'model.pth'))
-				torch.save(optimizer.state_dict(), os.path.join(args.logdir, 'finetune_on_' + kw + 'optim.pth'))
+				torch.save(model.state_dict(), os.path.join(args.logdir, 'all_finetune_on_' + kw + 'model.pth'))
+				torch.save(optimizer.state_dict(), os.path.join(args.logdir, 'all_finetune_on_' + kw + 'optim.pth'))
 			else:
 				print('best',self.DBAft[-1])
 
@@ -398,6 +401,33 @@ def compute_DBA_score(y_pred, y_true, max_k=3, delta=5):
 	return np.mean(yk)
 
 
+def dataset_augmentation():
+
+	# return augmentation on input dataset	
+
+	# camera augmentation: total 8
+
+	camera_aug_num = 7
+	augmentation_set = []
+	for i in range(1, camera_aug_num + 1):
+		augmentation_set_i = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config, test=False, augment={'camera':i, 'lidar':-1})
+		if augmentation_set == []:
+			augmentation_set = augmentation_set_i
+		else:
+			augmentation_set = ConcatDataset([augmentation_set, augmentation_set_i])
+
+	# # lidar augmentation: total 2
+	# lidar_aug_num = 2
+	# for i in range(1, lidar_aug_num):
+	# 	augmentation_set_i = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config, test=False, augment={'camera':-1, 'lidar':i})
+	# 	if augmentation_set == []:
+	# 		augmentation_set = augmentation_set_i
+	# 	else:
+	# 		augmentation_set = ConcatDataset([augmentation_set, augmentation_set_i])
+
+	return augmentation_set
+
+
 # Config
 config = GlobalConfig()
 config.add_velocity = args.add_velocity
@@ -431,28 +461,42 @@ def createDataset(InputFile, OutputFile, Keyword):
 						writer.writerow(row)
 			except:
 				   continue
-# os.environ["CUDA_VISIBLE_DEVICES"] = "3"
-data_root='/home/tiany0c/Downloads'
-data_root='.'
-trainval_root=data_root+'/MultiModeBeamforming/0Multi_Modal/'
+# # os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+# data_root='/home/tiany0c/Downloads'
+# data_root='.'
+# trainval_root=data_root+'/MultiModeBeamforming/Multi_Modal/'
+
+data_root = '/efs/data'
+trainval_root=data_root+'/Multi_Modal/'
+
+
 # train_root_csv='ml_challenge_dev_multi_modal1.csv'
 # trainval_root= data_root+'/MultiModeBeamforming/Adaptation_dataset_multi_modal/'
 
 # trainval_root= '/efs/data/Multi_Modal/'
-train_root_csv='ml_challenge_dev_multi_modal1.csv'
+# train_root_csv='ml_challenge_dev_multi_modal1.csv'
+
+train_root_csv='ml_challenge_dev_multi_modal.csv'
+
 
 # trainval_root='/efs/data/Adaptation_dataset_multi_modal/'
 # train_root_csv='ml_challenge_data_adaptation_multi_modal.csv'
 for keywords in ['scenario32','scenario33','scenario34']:
 	createDataset(trainval_root+train_root_csv, trainval_root+keywords,keywords)
 	print(trainval_root+keywords)
-val_root=data_root+'/MultiModeBeamforming/Adaptation_dataset_multi_modal/'
+
+# val_root=data_root+'/MultiModeBeamforming/Adaptation_dataset_multi_modal/'
+val_root = data_root + '/Adaptation_dataset_multi_modal/'
+
 # val_root='/efs/data/Adaptation_dataset_multi_modal/'
 val_root_csv='ml_challenge_data_adaptation_multi_modal.csv'
 for keywords in ['scenario31','scenario32','scenario33']:
 	createDataset(val_root+val_root_csv, val_root+keywords,keywords)
 	print(val_root + keywords)
-test_root=data_root+'/MultiModeBeamforming/Multi_Modal_Test/'
+
+# test_root=data_root+'/MultiModeBeamforming/Multi_Modal_Test/'
+test_root = data_root + '/Multi_Modal_Test/'
+
 # test_root='/efs/data/Multi_Modal_Test/'
 test_root_csv='ml_challenge_test_multi_modal.csv'
 
@@ -464,18 +508,36 @@ test_root_csv='ml_challenge_test_multi_modal.csv'
 
 
 
-if args.finetune:
+
+if args.finetune and not args.Test:
 	adaptation_set = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config,
 								test=False)  # adaptation dataset 100 samples
 	dev34_set = CARLA_Data(root=trainval_root, root_csv='scenario34.csv', config=config, test=False)
 	dev34_set, _ = torch.utils.data.random_split(dev34_set, [25, len(dev34_set) - 25])
-	development_set = ConcatDataset([adaptation_set, dev34_set])
-else:
+	train_set = ConcatDataset([adaptation_set, dev34_set])
+	print('train_set:', len(train_set))
+elif not args.train_adapt_together and not args.Test:
 	development_set = CARLA_Data(root=trainval_root, root_csv=train_root_csv, config=config,
 								 test=False)  # development dataset 11k samples
+
+	# add augmentation to develoment set
+	if args.augmentation:
+		augmentation_set = dataset_augmentation()
+		development_set = ConcatDataset([development_set, augmentation_set])
+
 	train_size = int(0.8 * len(development_set))
+	test_set = CARLA_Data(root=test_root, root_csv=test_root_csv, config=config, test=True)
 	train_set, val_set = torch.utils.data.random_split(development_set,
 														  [train_size, len(development_set) - train_size])
+	print('train_set:', train_size, 'val_set:', len(val_set), 'test_set:', len(test_set))
+	dataloader_val = DataLoader(val_set, batch_size=args.batch_size, shuffle=False, num_workers=8, pin_memory=False)
+if args.Test:
+	test_set = CARLA_Data(root=test_root, root_csv=test_root_csv, config=config, test=True)
+	print('test_set:', len(test_set))
+	dataloader_test = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=8, pin_memory=False)
+else:
+	dataloader_train = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=8, pin_memory=True,
+								  worker_init_fn=seed_worker, generator=g)
 
 # # split the adaptation set
 # train_subset_size = int(0.8 * len(adaptation_set))
@@ -483,8 +545,15 @@ else:
 if args.train_adapt_together and  args.finetune:
 	raise Exception('train on 31 and finetune can not be done at the same time' )
 if args.train_adapt_together and not args.finetune:
+	development_set = CARLA_Data(root=trainval_root, root_csv=train_root_csv, config=config,
+								 test=False)  # development dataset 11k samples
+	adaptation_set = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config,
+								test=False)  # adaptation dataset 100 samples
+
 	train_set = ConcatDataset([development_set, adaptation_set])
+	val_set = adaptation_set
 	train_size = len(train_set)
+
 # else:
 # 	train_size = len(development_set)
 # 	train_set = development_set
@@ -497,34 +566,32 @@ if args.train_adapt_together and not args.finetune:
 
 # val_set = adaptation_set
 
-test_set = CARLA_Data(root=test_root, root_csv=test_root_csv, config=config, test=True)
+
 
 # train_size = int(0.01 * len(train_set))
 # train_set, _= torch.utils.data.random_split(train_set, [train_size, len(train_set) - train_size])
 
 
-val_size = len(val_set)
+# val_size = len(val_set)
+#
+# print('train_set:', train_size,'val_set:', val_size, 'test_set:', len(test_set))
 
-print('train_set:', train_size,'val_set:', val_size, 'test_set:', len(test_set))
-dataloader_train = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=8, pin_memory=True, worker_init_fn=seed_worker, generator=g)
-dataloader_val = DataLoader(val_set, batch_size=args.batch_size, shuffle=False, num_workers=8, pin_memory=False)
-dataloader_test = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=8, pin_memory=False)
 
 
 # Model
 model = TransFuser(config, args.device)
 # model = torch.nn.DataParallel(model, device_ids = [2, 3])
 model = torch.nn.DataParallel(model)
-if args.finetune:
-	if isinstance(model, torch.nn.DataParallel):
-		for param in model.module.encoder.parameters():
-			param.requires_grad = False
-	else:
-		for param in model.encoder.parameters():
-			param.requires_grad = False
-	optimizer = optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=args.lr)
-else:
-	optimizer = optim.AdamW(model.parameters(), lr=args.lr)
+# if args.finetune:
+# 	if isinstance(model, torch.nn.DataParallel):
+# 		for param in model.module.encoder.parameters():
+# 			param.requires_grad = False
+# 	else:
+# 		for param in model.encoder.parameters():
+# 			param.requires_grad = False
+# 	optimizer = optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=args.lr)
+# else:
+optimizer = optim.AdamW(model.parameters(), lr=args.lr)
 if args.scheduler:
 	# scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
 	scheduler = CyclicCosineDecayLR(optimizer,
@@ -562,16 +629,17 @@ elif os.path.isfile(os.path.join(args.logdir, 'recent.log')):
 
 	# Load checkpoint
 	if args.finetune:
-		kw='best_'
-		if os.path.exists(os.path.join(args.logdir, 'finetune_on_'+ kw + 'model.pth')):
-			print('loading last finetune model')
-			model.load_state_dict(torch.load(os.path.join(args.logdir, 'finetune_on_'+ kw + 'model.pth')))
-			optimizer.load_state_dict(torch.load(os.path.join(args.logdir, 'finetune_on_' + kw + 'optim.pth')))
+
+		if os.path.exists(os.path.join(args.logdir, 'all_finetune_on_'+ kw + 'model.pth')):
+			print('loading last'+'all_finetune_on_'+ kw + 'model.pth')
+			model.load_state_dict(torch.load(os.path.join(args.logdir, 'all_finetune_on_'+ kw + 'model.pth')))
+			optimizer.load_state_dict(torch.load(os.path.join(args.logdir, 'all_finetune_on_' + kw + 'optim.pth')))
 		else:
 			print('loading '+kw+' model')
 			model.load_state_dict(torch.load(os.path.join(args.logdir, kw+'model.pth')))
 			# optimizer.load_state_dict(torch.load(os.path.join(args.logdir, kw+'optim.pth')))
 	else:
+		print('loading best_model')
 		model.load_state_dict(torch.load(os.path.join(args.logdir, 'best_model.pth')))
 
 
@@ -585,7 +653,7 @@ elif os.path.isfile(os.path.join(args.logdir, 'recent.log')):
 # Log args
 with open(os.path.join(args.logdir, 'args.txt'), 'w') as f:
 	json.dump(args.__dict__, f, indent=2)
-if args.Test==1:
+if args.Test:
 	trainer.test()
 	print('Test finish')
 else:

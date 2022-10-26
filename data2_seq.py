@@ -12,10 +12,13 @@ import matplotlib.pyplot as plt
 import open3d as o3d
 import torchvision.transforms as transforms
 from scipy import stats
+from sklearn.preprocessing import normalize
 import utm
 import cv2
+import re
+
 class CARLA_Data(Dataset):
-    def __init__(self, root, root_csv, config, test=False):
+    def __init__(self, root, root_csv, config, test=False, augment={'camera':-1, 'lidar':-1}):
 
         self.dataframe = pd.read_csv(root+root_csv)
         self.root=root
@@ -26,6 +29,7 @@ class CARLA_Data(Dataset):
         self.add_velocity = config.add_velocity
         self.add_mask = config.add_mask
         self.enhanced = config.enhanced
+        self.augment = augment
 
     def __len__(self):
         """Returns the length of the dataset. """
@@ -51,8 +55,24 @@ class CARLA_Data(Dataset):
         instanceidx=['1','2', '3', '4', '5']
 
         for stri in instanceidx:
-            add_fronts.append(self.dataframe['unit1_rgb_'+stri][index])
-            add_lidars.append(self.dataframe['unit1_lidar_'+stri][index])
+
+            camera_dir = self.dataframe['unit1_rgb_'+stri][index]
+            if self.augment['camera'] >= 0 and 'scenario31' in camera_dir:
+                camera_dir = re.sub('camera_data', 'camera_data_aug', camera_dir)
+                camera_dir = camera_dir[:-4] + '_' + str(self.augment['camera']) + '.jpg'
+                add_fronts.append(camera_dir)
+            else:
+                add_fronts.append(self.dataframe['unit1_rgb_'+stri][index])
+
+
+            lidar_dir = self.dataframe['unit1_lidar_'+stri][index]
+            if self.augment['lidar'] >= 0 and 'scenario31' in lidar_dir:
+                lidar_dir = re.sub('lidar_data', 'lidar_data_aug', lidar_dir)
+                lidar_dir = lidar_dir[:-4] + '_' + str(self.augment['lidar']) + '.ply'
+                add_lidars.append(lidar_dir)
+            else:
+                add_lidars.append(self.dataframe['unit1_lidar_'+stri][index])
+
             add_radars1 = self.dataframe['unit1_radar_'+stri][index]
             add_radars.append(add_radars1[:29] + '_ang' + add_radars1[29:])
             #add_radars.append(add_radars1[:29] + '_vel' + add_radars1[29:])
@@ -74,9 +94,23 @@ class CARLA_Data(Dataset):
 
         for i in range(self.seq_len):
             if 'scenario31' in add_fronts[i] or 'scenario32' in add_fronts[i]:
+
+                # if self.add_mask:
+                #     imgs = np.array(
+                #         Image.open(self.root + add_fronts[i][:30] + '_mask' + add_fronts[i][30:]).resize((256, 256)))
+                # else:
+                #     imgs = np.array(
+                #         Image.open(self.root + add_fronts[i]).resize((256, 256)))
+                # imgs = np.array(Image.open(self.root + add_fronts[i]).resize((256, 256)))
+                # seg = np.array(Image.open(self.root+add_fronts[i][:30]+'_seg'+add_fronts[i][30:]).resize((256,256)))
+                # imgs = cv2.addWeighted(imgs, 0.8, seg, 0.2, 0)
+
                 imgs = np.array(Image.open(self.root + add_fronts[i]).resize((256, 256)))
-                seg = np.array(Image.open(self.root+add_fronts[i][:30]+'_seg'+add_fronts[i][30:]).resize((256,256)))
-                imgs = cv2.addWeighted(imgs, 0.8, seg, 0.2, 0)
+
+                if self.augment['camera'] < 0:  # segmentation added to non augmented data
+                    seg = np.array(Image.open(self.root+add_fronts[i][:30]+'_seg'+add_fronts[i][30:]).resize((256,256)))
+                    imgs = cv2.addWeighted(imgs, 0.8, seg, 0.2, 0)
+
             else:
                 if self.add_mask & self.enhanced:
                     raise Exception("mask or enhance, both are not possible")
@@ -186,12 +220,15 @@ def Normalize_loc(root, dataframe):
 
     pos_diff = pos_ue_cart - pos_bs_cart
 
-    pos_min = np.min(pos_diff, axis=0)
-    pos_max = np.max(pos_diff, axis=0)
+    # pos_min = np.min(pos_diff, axis=0)
+    # pos_max = np.max(pos_diff, axis=0)
+    pos_max = np.array([40.20955233, 52.31386139])
+    pos_min = np.array([ -7.18029715, -97.55563452])
 
     # Normalize and unstack
     pos_stacked_normalized = (pos_diff - pos_min) / (pos_max - pos_min)
     pos_input_normalized = np.zeros((n_samples, 2, 2))
     pos_input_normalized[:, 0, :] = pos_stacked_normalized[:n_samples]
     pos_input_normalized[:, 1, :] = pos_stacked_normalized[n_samples:]
+    print(pos_input_normalized)
     return pos_input_normalized
