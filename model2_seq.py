@@ -520,4 +520,3 @@ class TransFuser(nn.Module):
        
 
         return z
-
