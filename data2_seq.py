@@ -31,6 +31,7 @@ class CARLA_Data(Dataset):
         self.enhanced = config.enhanced
         self.augment = augment
         self.custom_FoV_lidar = config.custom_FoV_lidar
+        self.add_mask_seg = config.add_mask_seg
 
     def __len__(self):
         """Returns the length of the dataset. """
@@ -105,8 +106,11 @@ class CARLA_Data(Dataset):
                 # imgs = np.array(Image.open(self.root + add_fronts[i]).resize((256, 256)))
                 # seg = np.array(Image.open(self.root+add_fronts[i][:30]+'_seg'+add_fronts[i][30:]).resize((256,256)))
                 # imgs = cv2.addWeighted(imgs, 0.8, seg, 0.2, 0)
-
-                imgs = np.array(Image.open(self.root + add_fronts[i]).resize((256, 256)))
+                if self.add_mask_seg:
+                    imgs = np.array(
+                            Image.open(self.root + add_fronts[i][:30] + '_mask' + add_fronts[i][30:]).resize((256, 256)))
+                else:
+                    imgs = np.array(Image.open(self.root + add_fronts[i]).resize((256, 256)))
 
                 if self.augment['camera'] < 0:  # segmentation added to non augmented data
                     seg = np.array(Image.open(self.root+add_fronts[i][:30]+'_seg'+add_fronts[i][30:]).resize((256,256)))

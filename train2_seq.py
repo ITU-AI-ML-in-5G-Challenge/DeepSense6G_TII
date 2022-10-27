@@ -50,7 +50,7 @@ parser.add_argument('--Test', type=int, default=0, help='Test')
 parser.add_argument('--augmentation', type=int, default=1, help='data augmentation of camera and lidar')
 parser.add_argument('--angle_norm', type=int, default=0, help='normlize the gps loc with unit, angle can be obtained')
 parser.add_argument('--custom_FoV_lidar', type=int, default=0, help='Custom FoV of lidar')
-
+parser.add_argument('--add_mask_seg', type=int, default=0, help='add mask and seg on 31&32 images')
 
 args = parser.parse_args()
 args.logdir = os.path.join(args.logdir, args.id)
@@ -437,6 +437,7 @@ config.add_mask = args.add_mask
 config.enhanced = args.enhanced
 config.angle_norm = args.angle_norm
 config.custom_FoV_lidar=args.custom_FoV_lidar
+config.add_mask_seg = args.add_mask_seg
 import random
 import numpy
 seed = 100
