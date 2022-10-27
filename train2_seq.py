@@ -29,7 +29,7 @@ kw='final_'
 torch.cuda.empty_cache()
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--id', type=str, default='test', help='Unique experiment identifier.')
+parser.add_argument('--id', type=str, default='aug_ema', help='Unique experiment identifier.')
 parser.add_argument('--device', type=str, default='cuda', help='Device to use')
 parser.add_argument('--epochs', type=int, default=150, help='Number of train epochs.')
 parser.add_argument('--lr', type=float, default=2e-4, help='Learning rate.')
@@ -39,11 +39,11 @@ parser.add_argument('--batch_size', type=int, default=24, help='Batch size')	# d
 parser.add_argument('--logdir', type=str, default='/ibex/scratch/tiany0c/log', help='Directory to log data to.')
 parser.add_argument('--add_velocity', type = int, default=1, help='concatenate velocity map with angle map')
 parser.add_argument('--add_mask', type=int, default=0, help='add mask to the camera data')
-parser.add_argument('--enhanced', type=int, default=0, help='use enhanced camera data')
-parser.add_argument('--loss', type=str, default='ce', help='crossentropy or focal loss')
-parser.add_argument('--scheduler', type=int, default=0, help='use scheduler to control the learning rate')
-parser.add_argument('--load_previous_best', type=int, default=1, help='load previous best pretrained model ')
-parser.add_argument('--temp_coef', type=int, default=0, help='apply temperature coefficience on the target')
+parser.add_argument('--enhanced', type=int, default=1, help='use enhanced camera data')
+parser.add_argument('--loss', type=str, default='focal', help='crossentropy or focal loss')
+parser.add_argument('--scheduler', type=int, default=1, help='use scheduler to control the learning rate')
+parser.add_argument('--load_previous_best', type=int, default=0, help='load previous best pretrained model ')
+parser.add_argument('--temp_coef', type=int, default=1, help='apply temperature coefficience on the target')
 parser.add_argument('--train_adapt_together', type=int, default=0, help='combine train and adaptation dataset together')
 parser.add_argument('--finetune', type=int, default=0, help='first train on development set and finetune on 31-34 set')
 parser.add_argument('--Test', type=int, default=0, help='Test')
@@ -51,6 +51,7 @@ parser.add_argument('--augmentation', type=int, default=1, help='data augmentati
 parser.add_argument('--angle_norm', type=int, default=0, help='normlize the gps loc with unit, angle can be obtained')
 parser.add_argument('--custom_FoV_lidar', type=int, default=0, help='Custom FoV of lidar')
 parser.add_argument('--add_mask_seg', type=int, default=0, help='add mask and seg on 31&32 images')
+parser.add_argument('--ema', type=int, default=0, help='exponential moving average')
 
 args = parser.parse_args()
 args.logdir = os.path.join(args.logdir, args.id)
@@ -140,6 +141,10 @@ class Engine(object):
 			pbar.set_description(str(loss.item()))
 			num_batches += 1
 			optimizer.step()
+
+			if args.ema:
+				ema.update()	# during training, after update parameters, update shadow weights
+
 			# writer.add_scalar('train_loss', loss.item(), self.cur_iter)
 			self.cur_iter += 1
 		pred_beam_all = np.squeeze(np.concatenate(pred_beam_all, 0))
@@ -167,7 +172,12 @@ class Engine(object):
 			else:
 				print('best',self.DBAft[-1])
 
+
 	def validate(self):
+
+		if args.ema:
+			ema.apply_shadow()    # before eval，apply shadow weights
+
 		model.eval()
 		running_acc = 0.0
 
@@ -248,6 +258,10 @@ class Engine(object):
 
 			self.val_loss.append(wp_loss)
 			self.DBA.append(DBA_score_val)
+
+		if args.ema:
+			ema.restore()	# after eval, restore model parameter
+
 
 	def test(self):
 		model.eval()
@@ -353,6 +367,41 @@ class FocalLoss(torch.nn.modules.loss._WeightedLoss):
         pt = torch.exp(-ce_loss)
         focal_loss = ((1 - pt) ** self.gamma * ce_loss).mean()
         return focal_loss
+
+
+class EMA():
+    def __init__(self, model, decay):
+        self.model = model
+        self.decay = decay
+        self.shadow = {}
+        self.backup = {}
+
+    def register(self):
+        for name, param in self.model.named_parameters():
+            if param.requires_grad:
+                self.shadow[name] = param.data.clone()
+
+    def update(self):
+        for name, param in self.model.named_parameters():
+            if param.requires_grad:
+                assert name in self.shadow
+                new_average = (1.0 - self.decay) * param.data + self.decay * self.shadow[name]
+                self.shadow[name] = new_average.clone()
+
+    def apply_shadow(self):
+        for name, param in self.model.named_parameters():
+            if param.requires_grad:
+                assert name in self.shadow
+                self.backup[name] = param.data
+                param.data = self.shadow[name]
+
+    def restore(self):
+        for name, param in self.model.named_parameters():
+            if param.requires_grad:
+                assert name in self.backup
+                param.data = self.backup[name]
+        self.backup = {}
+
 
 
 def save_pred_to_csv(y_pred, top_k=[1, 2, 3], target_csv='beam_pred.csv'):
@@ -656,6 +705,10 @@ elif os.path.isfile(os.path.join(args.logdir, 'recent.log')):
 	# 	# test
 	# sys.exit()
 
+ema = EMA(model, 0.999)
+
+if args.ema:
+	ema.register()
 
 
 # Log args
