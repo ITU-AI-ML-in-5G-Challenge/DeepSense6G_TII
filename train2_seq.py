@@ -469,7 +469,7 @@ def dataset_augmentation():
 
 	# lidar augmentation: total 2
 	lidar_aug_num = 2
-	for i in range(1, lidar_aug_num):
+	for i in range(1, lidar_aug_num+1):
 		augmentation_set_i = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config, test=False, augment={'camera':-1, 'lidar':i})
 		if augmentation_set == []:
 			augmentation_set = augmentation_set_i
@@ -596,6 +596,7 @@ if args.train_adapt_together and not args.finetune:
 	if args.augmentation:
 		print('======data augmentation')
 		augmentation_set = dataset_augmentation()
+		print('size of aug set',len(augmentation_set))
 		development_set = ConcatDataset([development_set, augmentation_set])
 	adaptation_set = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config,
 								test=False)  # adaptation dataset 100 samples
