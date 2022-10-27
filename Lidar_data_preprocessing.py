@@ -12,6 +12,11 @@ lidar_path=[["/efs/data/Adaptation_dataset_multi_modal/scenario31/unit1/lidar_da
 "/efs/data/Multi_Modal_Test/scenario33/unit1/lidar_data/"],["/efs/data/Multi_Modal/scenario34/unit1/lidar_data/",
 "/efs/data/Multi_Modal_Test/scenario34/unit1/lidar_data/"]]
 
+lidar_path_background=[["/efs/data/Adaptation_dataset_multi_modal/scenario31/unit1/lidar_data/"],
+["/efs/data/Multi_Modal_Test/scenario32/unit1/lidar_data/"],
+["/efs/data/Adaptation_dataset_multi_modal/scenario33/unit1/lidar_data/"],
+["/efs/data/Multi_Modal_Test/scenario34/unit1/lidar_data/"]]
+
 #lidar_path=[["/efs/data/Adaptation_dataset_multi_modal/scenario31/unit1/lidar_data/",
 #"/efs/data/Multi_Modal_Test/scenario31/unit1/lidar_data/"]]
 
@@ -42,16 +47,16 @@ lidar_distance_cst=30
 for scenario_idx in range(len(scenario_list)):
 
     init_idx=0
-    lidar_list=os.listdir(lidar_path[scenario_idx][0])
-    background_pcl = o3d.io.read_point_cloud(lidar_path[scenario_idx][0]+lidar_list[0])
+    lidar_list=os.listdir(lidar_path_background[scenario_idx][0])
+    background_pcl = o3d.io.read_point_cloud(lidar_path_background[scenario_idx][0]+lidar_list[0])
     
     while((np.asarray(background_pcl.points).shape[0])<scenario_min_points[scenario_idx]):
         init_idx+=1
-        lidar_list=os.listdir(lidar_path[scenario_idx][init_idx])
-        background_pcl = o3d.io.read_point_cloud(lidar_path[scenario_idx][0]+lidar_list[0])    
+        lidar_list=os.listdir(lidar_path_background[scenario_idx][init_idx])
+        background_pcl = o3d.io.read_point_cloud(lidar_path_background[scenario_idx][0]+lidar_list[0])    
     
 
-    for lidar_path_item in lidar_path[scenario_idx]:
+    for lidar_path_item in lidar_path_background[scenario_idx]:
         
         lidar_list=os.listdir(lidar_path_item)
 
