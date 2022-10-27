@@ -36,7 +36,7 @@ parser.add_argument('--lr', type=float, default=2e-4, help='Learning rate.')
 parser.add_argument('--val_every', type=int, default=1, help='Validation frequency (epochs).')
 parser.add_argument('--shuffle_every', type=int, default=6, help='Shuffle the dataset frequency (epochs).')
 parser.add_argument('--batch_size', type=int, default=24, help='Batch size')	# default=24
-parser.add_argument('--logdir', type=str, default='/efs/qiyang/DeepSense6G_TII/log', help='Directory to log data to.')	# /ibex/scratch/tiany0c/log
+parser.add_argument('--logdir', type=str, default='/ibex/scratch/tiany0c/log/log', help='Directory to log data to.')	# /ibex/scratch/tiany0c/log
 parser.add_argument('--add_velocity', type = int, default=1, help='concatenate velocity map with angle map')
 parser.add_argument('--add_mask', type=int, default=0, help='add mask to the camera data')
 parser.add_argument('--enhanced', type=int, default=1, help='use enhanced camera data')
@@ -530,9 +530,9 @@ def createDataset(InputFile, OutputFile, Keyword):
 # data_root='.'
 # trainval_root=data_root+'/MultiModeBeamforming/Multi_Modal/'
 
-# data_root = './MultiModeBeamforming/'
+data_root = './MultiModeBeamforming/'
 
-data_root = '/efs/data'
+# data_root = '/efs/data'
 
 trainval_root=data_root+'/Multi_Modal/'
 
