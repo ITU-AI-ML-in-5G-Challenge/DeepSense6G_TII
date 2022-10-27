@@ -468,6 +468,7 @@ def dataset_augmentation(root_csv):
 
 	augmentation_set = []
 
+
 	for i in range(0, camera_aug_num + 1):
 		for j in range(0, lidar_aug_num + 1):
 			for k in range(0, radar_aug_num + 1):
