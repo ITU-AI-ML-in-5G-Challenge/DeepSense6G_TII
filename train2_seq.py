@@ -29,14 +29,14 @@ kw='final_'
 torch.cuda.empty_cache()
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--id', type=str, default='aug_ema', help='Unique experiment identifier.')
+parser.add_argument('--id', type=str, default='test', help='Unique experiment identifier.')
 parser.add_argument('--device', type=str, default='cuda', help='Device to use')
 parser.add_argument('--epochs', type=int, default=150, help='Number of train epochs.')
 parser.add_argument('--lr', type=float, default=2e-4, help='Learning rate.')
 parser.add_argument('--val_every', type=int, default=1, help='Validation frequency (epochs).')
 parser.add_argument('--shuffle_every', type=int, default=6, help='Shuffle the dataset frequency (epochs).')
 parser.add_argument('--batch_size', type=int, default=24, help='Batch size')	# default=24
-parser.add_argument('--logdir', type=str, default='/ibex/scratch/tiany0c/log', help='Directory to log data to.')
+parser.add_argument('--logdir', type=str, default='/efs/qiyang/DeepSense6G_TII/log', help='Directory to log data to.')	# /ibex/scratch/tiany0c/log
 parser.add_argument('--add_velocity', type = int, default=1, help='concatenate velocity map with angle map')
 parser.add_argument('--add_mask', type=int, default=0, help='add mask to the camera data')
 parser.add_argument('--enhanced', type=int, default=1, help='use enhanced camera data')
@@ -44,7 +44,7 @@ parser.add_argument('--loss', type=str, default='focal', help='crossentropy or f
 parser.add_argument('--scheduler', type=int, default=1, help='use scheduler to control the learning rate')
 parser.add_argument('--load_previous_best', type=int, default=0, help='load previous best pretrained model ')
 parser.add_argument('--temp_coef', type=int, default=1, help='apply temperature coefficience on the target')
-parser.add_argument('--train_adapt_together', type=int, default=0, help='combine train and adaptation dataset together')
+parser.add_argument('--train_adapt_together', type=int, default=1, help='combine train and adaptation dataset together')
 parser.add_argument('--finetune', type=int, default=0, help='first train on development set and finetune on 31-34 set')
 parser.add_argument('--Test', type=int, default=0, help='Test')
 parser.add_argument('--augmentation', type=int, default=1, help='data augmentation of camera and lidar')
@@ -461,7 +461,7 @@ def dataset_augmentation():
 	camera_aug_num = 7
 	augmentation_set = []
 	for i in range(1, camera_aug_num + 1):
-		augmentation_set_i = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config, test=False, augment={'camera':i, 'lidar':-1})
+		augmentation_set_i = CARLA_Data(root=val_root, root_csv='scenario31.csv', config=config, test=False, augment={'camera':i, 'lidar':-1})
 		if augmentation_set == []:
 			augmentation_set = augmentation_set_i
 		else:
@@ -469,8 +469,9 @@ def dataset_augmentation():
 
 	# lidar augmentation: total 2
 	lidar_aug_num = 2
-	for i in range(1, lidar_aug_num+1):
-		augmentation_set_i = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config, test=False, augment={'camera':-1, 'lidar':i})
+
+	for i in range(1, lidar_aug_num + 1):
+		augmentation_set_i = CARLA_Data(root=val_root, root_csv='scenario31.csv', config=config, test=False, augment={'camera':-1, 'lidar':i})
 		if augmentation_set == []:
 			augmentation_set = augmentation_set_i
 		else:
@@ -520,7 +521,10 @@ def createDataset(InputFile, OutputFile, Keyword):
 # data_root='.'
 # trainval_root=data_root+'/MultiModeBeamforming/Multi_Modal/'
 
-data_root = './MultiModeBeamforming/'
+# data_root = './MultiModeBeamforming/'
+
+data_root = '/efs/data'
+
 trainval_root=data_root+'/Multi_Modal/'
 
 
