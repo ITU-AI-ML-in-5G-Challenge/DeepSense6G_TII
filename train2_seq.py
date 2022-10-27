@@ -40,6 +40,7 @@ parser.add_argument('--logdir', type=str, default='/efs/qiyang/DeepSense6G_TII/l
 parser.add_argument('--add_velocity', type = int, default=1, help='concatenate velocity map with angle map')
 parser.add_argument('--add_mask', type=int, default=0, help='add mask to the camera data')
 parser.add_argument('--enhanced', type=int, default=1, help='use enhanced camera data')
+parser.add_argument('--filtered', type=int, default=1, help='use filtered lidar data')
 parser.add_argument('--loss', type=str, default='focal', help='crossentropy or focal loss')
 parser.add_argument('--scheduler', type=int, default=1, help='use scheduler to control the learning rate')
 parser.add_argument('--load_previous_best', type=int, default=0, help='load previous best pretrained model ')
@@ -452,30 +453,35 @@ def compute_DBA_score(y_pred, y_true, max_k=3, delta=5):
 	return np.mean(yk)
 
 
-def dataset_augmentation():
+def dataset_augmentation(root_csv):
 
 	# return augmentation on input dataset	
 
-	# camera augmentation: total 8
+	# camera augmentation: total 7
+	# lidar augmentation: total 2
+	# radar augmentation: total 1
+	# return: ((camera_aug_num + 1) * (lidar_aug_num + 1) * (radar_aug_num + 1)) - 1
 
 	camera_aug_num = 7
-	augmentation_set = []
-	for i in range(1, camera_aug_num + 1):
-		augmentation_set_i = CARLA_Data(root=val_root, root_csv='scenario31.csv', config=config, test=False, augment={'camera':i, 'lidar':-1})
-		if augmentation_set == []:
-			augmentation_set = augmentation_set_i
-		else:
-			augmentation_set = ConcatDataset([augmentation_set, augmentation_set_i])
-
-	# lidar augmentation: total 2
 	lidar_aug_num = 2
+	radar_aug_num = 1
 
-	for i in range(1, lidar_aug_num + 1):
-		augmentation_set_i = CARLA_Data(root=val_root, root_csv='scenario31.csv', config=config, test=False, augment={'camera':-1, 'lidar':i})
-		if augmentation_set == []:
-			augmentation_set = augmentation_set_i
-		else:
-			augmentation_set = ConcatDataset([augmentation_set, augmentation_set_i])
+	augmentation_set = []
+
+	for i in range(0, camera_aug_num + 1):
+		for j in range(0, lidar_aug_num + 1):
+			for k in range(0, radar_aug_num + 1):
+
+				if i == 0 and j == 0 and k == 0:	# skip the original dataset
+					continue
+
+				augmentation_entry = CARLA_Data(root=val_root, root_csv=root_csv, config=config, test=False, augment={'camera':i, 'lidar':j, 'radar':k})
+				if augmentation_set == []:
+					augmentation_set = augmentation_entry
+				else:
+					augmentation_set = ConcatDataset([augmentation_set, augmentation_entry])
+
+	print('Augmented Dataset: ', root_csv, ' Samples: ', str(len(augmentation_set)))
 
 	return augmentation_set
 
@@ -488,6 +494,8 @@ config.enhanced = args.enhanced
 config.angle_norm = args.angle_norm
 config.custom_FoV_lidar=args.custom_FoV_lidar
 config.add_mask_seg = args.add_mask_seg
+config.filtered = args.filtered
+
 import random
 import numpy
 seed = 100
@@ -599,8 +607,7 @@ if args.train_adapt_together and not args.finetune:
 	# add augmentation to develoment set
 	if args.augmentation:
 		print('======data augmentation')
-		augmentation_set = dataset_augmentation()
-		print('size of aug set',len(augmentation_set))
+		augmentation_set = dataset_augmentation(root_csv='scenario31.csv')
 		development_set = ConcatDataset([development_set, augmentation_set])
 	adaptation_set = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config,
 								test=False)  # adaptation dataset 100 samples

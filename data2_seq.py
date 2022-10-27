@@ -18,7 +18,7 @@ import cv2
 import re
 
 class CARLA_Data(Dataset):
-    def __init__(self, root, root_csv, config, test=False, augment={'camera':-1, 'lidar':-1}):
+    def __init__(self, root, root_csv, config, test=False, augment={'camera':0, 'lidar':0, 'radar':0}):
 
         self.dataframe = pd.read_csv(root+root_csv)
         self.root=root
@@ -29,6 +29,7 @@ class CARLA_Data(Dataset):
         self.add_velocity = config.add_velocity
         self.add_mask = config.add_mask
         self.enhanced = config.enhanced
+        self.filtered = config.filtered
         self.augment = augment
         self.custom_FoV_lidar = config.custom_FoV_lidar
         self.add_mask_seg = config.add_mask_seg
@@ -59,24 +60,31 @@ class CARLA_Data(Dataset):
         for stri in instanceidx:
 
             camera_dir = self.dataframe['unit1_rgb_'+stri][index]
-            if self.augment['camera'] >= 0 and 'scenario31' in camera_dir:
+            if self.augment['camera'] > 0: # and 'scenario31' in camera_dir:
                 camera_dir = re.sub('camera_data/', 'camera_data_aug/', camera_dir)
                 camera_dir = camera_dir[:-4] + '_' + str(self.augment['camera']) + '.jpg'
                 add_fronts.append(camera_dir)
             else:
                 add_fronts.append(self.dataframe['unit1_rgb_'+stri][index])
 
-
             lidar_dir = self.dataframe['unit1_lidar_'+stri][index]
-            if self.augment['lidar'] >= 0 and 'scenario31' in lidar_dir:
+            if self.augment['lidar'] > 0:  # and 'scenario31' in lidar_dir:
                 lidar_dir = re.sub('lidar_data/', 'lidar_data_aug/', lidar_dir)
                 lidar_dir = lidar_dir[:-4] + '_' + str(self.augment['lidar']) + '.ply'
+                add_lidars.append(lidar_dir)
+            elif self.filtered:     # for non augmented lidar, check if applying filtered
+                lidar_dir = re.sub('lidar_data/', 'lidar_data_filtered/', lidar_dir)
                 add_lidars.append(lidar_dir)
             else:
                 add_lidars.append(self.dataframe['unit1_lidar_'+stri][index])
 
-            add_radars1 = self.dataframe['unit1_radar_'+stri][index]
-            add_radars.append(add_radars1[:29] + '_ang' + add_radars1[29:])
+            radar_dir = self.dataframe['unit1_radar_'+stri][index]
+            if self.augment['radar'] > 0:
+                radar_dir = re.sub('radar_data/', 'radar_data_ang_aug/', radar_dir)
+            else:
+                radar_dir = re.sub('radar_data/', 'radar_data_ang/', radar_dir)
+            add_radars.append(radar_dir)
+
             #add_radars.append(add_radars1[:29] + '_vel' + add_radars1[29:])
             #add_radars.append(add_radars1[:29] + '_cube' + add_radars1[29:])
 
@@ -129,13 +137,17 @@ class CARLA_Data(Dataset):
                         Image.open(self.root + add_fronts[i]).resize((256, 256)))
                 else:
                     imgs = np.array(Image.open(self.root + add_fronts[i][:30]+'_raw'+add_fronts[i][30:]).resize((256, 256)))
+
+
             data['fronts'].append(torch.from_numpy(np.transpose(np.array(Image.open(self.root+add_fronts[i]).resize((256,256))),(2,0,1))))
             radar_ang = np.expand_dims(np.load(self.root + add_radars[i]), 0)
+
             if self.add_velocity:
                 radar_vel = np.expand_dims(np.load(self.root + add_radars[i].replace('ang','vel')), 0)
                 data['radars'].append(torch.from_numpy(np.concatenate([radar_ang, radar_vel], 0)))
             else:
                 data['radars'].append(torch.from_numpy(radar_ang))
+            
             # data['radars'].append(torch.from_numpy(np.expand_dims(np.load(self.root+add_radars[i]),0)))
             #lidar data
             PT = np.asarray(o3d.io.read_point_cloud(self.root+add_lidars[i]).points)
