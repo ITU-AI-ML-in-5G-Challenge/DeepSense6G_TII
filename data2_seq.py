@@ -106,15 +106,17 @@ class CARLA_Data(Dataset):
                 # imgs = np.array(Image.open(self.root + add_fronts[i]).resize((256, 256)))
                 # seg = np.array(Image.open(self.root+add_fronts[i][:30]+'_seg'+add_fronts[i][30:]).resize((256,256)))
                 # imgs = cv2.addWeighted(imgs, 0.8, seg, 0.2, 0)
-                if self.add_mask_seg:
-                    imgs = np.array(
-                            Image.open(self.root + add_fronts[i][:30] + '_mask' + add_fronts[i][30:]).resize((256, 256)))
-                else:
-                    imgs = np.array(Image.open(self.root + add_fronts[i]).resize((256, 256)))
+
 
                 if self.augment['camera'] < 0:  # segmentation added to non augmented data
-                    seg = np.array(Image.open(self.root+add_fronts[i][:30]+'_seg'+add_fronts[i][30:]).resize((256,256)))
-                    imgs = cv2.addWeighted(imgs, 0.8, seg, 0.2, 0)
+                    if self.add_mask_seg:
+                        imgs = np.array(
+                            Image.open(self.root + add_fronts[i][:30] + '_mask' + add_fronts[i][30:]).resize(
+                                (256, 256)))
+                    else:
+                        imgs = np.array(Image.open(self.root + add_fronts[i]).resize((256, 256)))
+                        seg = np.array(Image.open(self.root+add_fronts[i][:30]+'_seg'+add_fronts[i][30:]).resize((256,256)))
+                        imgs = cv2.addWeighted(imgs, 0.8, seg, 0.2, 0)
 
             else:
                 if self.add_mask & self.enhanced:
