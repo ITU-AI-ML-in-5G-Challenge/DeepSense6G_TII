@@ -6,7 +6,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from torchvision import models
-from torchvision.models import ResNet34_Weights,ResNet18_Weights
+
 
 
 class ImageCNN(nn.Module):
@@ -20,7 +20,7 @@ class ImageCNN(nn.Module):
     def __init__(self, c_dim, normalize=True):
         super().__init__()
         self.normalize = normalize
-        self.features = models.resnet34(weights=ResNet34_Weights.DEFAULT)
+        self.features = models.resnet34(pretrained =True)
         self.features.fc = nn.Sequential()
         # for param in self.features.parameters():
         #     param.requires_grad = False
@@ -56,7 +56,7 @@ class LidarEncoder(nn.Module):
     def __init__(self, num_classes=512, in_channels=2):
         super().__init__()
 
-        self._model = models.resnet18(weights=ResNet18_Weights.DEFAULT)
+        self._model = models.resnet18(pretrained =True)
         self._model.fc = nn.Sequential()
         _tmp = self._model.conv1
         self._model.conv1 = nn.Conv2d(in_channels, out_channels=_tmp.out_channels, 

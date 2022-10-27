@@ -36,7 +36,7 @@ parser.add_argument('--lr', type=float, default=2e-4, help='Learning rate.')
 parser.add_argument('--val_every', type=int, default=1, help='Validation frequency (epochs).')
 parser.add_argument('--shuffle_every', type=int, default=6, help='Shuffle the dataset frequency (epochs).')
 parser.add_argument('--batch_size', type=int, default=24, help='Batch size')	# default=24
-parser.add_argument('--logdir', type=str, default='/efs/qiyang/DeepSense6G_TII/log', help='Directory to log data to.')
+parser.add_argument('--logdir', type=str, default='/ibex/scratch/tiany0c/log', help='Directory to log data to.')
 parser.add_argument('--add_velocity', type = int, default=1, help='concatenate velocity map with angle map')
 parser.add_argument('--add_mask', type=int, default=0, help='add mask to the camera data')
 parser.add_argument('--enhanced', type=int, default=0, help='use enhanced camera data')
@@ -48,6 +48,8 @@ parser.add_argument('--train_adapt_together', type=int, default=0, help='combine
 parser.add_argument('--finetune', type=int, default=0, help='first train on development set and finetune on 31-34 set')
 parser.add_argument('--Test', type=int, default=0, help='Test')
 parser.add_argument('--augmentation', type=int, default=1, help='data augmentation of camera and lidar')
+parser.add_argument('--angle_norm', type=int, default=0, help='normlize the gps loc with unit, angle can be obtained')
+parser.add_argument('--custom_FoV_lidar', type=int, default=0, help='Custom FoV of lidar')
 
 
 args = parser.parse_args()
@@ -433,6 +435,8 @@ config = GlobalConfig()
 config.add_velocity = args.add_velocity
 config.add_mask = args.add_mask
 config.enhanced = args.enhanced
+config.angle_norm = args.angle_norm
+config.custom_FoV_lidar=args.custom_FoV_lidar
 import random
 import numpy
 seed = 100
@@ -466,12 +470,12 @@ def createDataset(InputFile, OutputFile, Keyword):
 # data_root='.'
 # trainval_root=data_root+'/MultiModeBeamforming/Multi_Modal/'
 
-data_root = '/efs/data'
+data_root = './MultiModeBeamforming/'
 trainval_root=data_root+'/Multi_Modal/'
 
 
 # train_root_csv='ml_challenge_dev_multi_modal1.csv'
-# trainval_root= data_root+'/MultiModeBeamforming/Adaptation_dataset_multi_modal/'
+# trainval_root= data_root+'/Adaptation_dataset_multi_modal/'
 
 # trainval_root= '/efs/data/Multi_Modal/'
 # train_root_csv='ml_challenge_dev_multi_modal1.csv'
@@ -520,24 +524,14 @@ elif not args.train_adapt_together and not args.Test:
 	development_set = CARLA_Data(root=trainval_root, root_csv=train_root_csv, config=config,
 								 test=False)  # development dataset 11k samples
 
-	# add augmentation to develoment set
-	if args.augmentation:
-		augmentation_set = dataset_augmentation()
-		development_set = ConcatDataset([development_set, augmentation_set])
+
 
 	train_size = int(0.8 * len(development_set))
-	test_set = CARLA_Data(root=test_root, root_csv=test_root_csv, config=config, test=True)
 	train_set, val_set = torch.utils.data.random_split(development_set,
 														  [train_size, len(development_set) - train_size])
-	print('train_set:', train_size, 'val_set:', len(val_set), 'test_set:', len(test_set))
+	print('train_set:', train_size, 'val_set:', len(val_set))
 	dataloader_val = DataLoader(val_set, batch_size=args.batch_size, shuffle=False, num_workers=8, pin_memory=False)
-if args.Test:
-	test_set = CARLA_Data(root=test_root, root_csv=test_root_csv, config=config, test=True)
-	print('test_set:', len(test_set))
-	dataloader_test = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=8, pin_memory=False)
-else:
-	dataloader_train = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=8, pin_memory=True,
-								  worker_init_fn=seed_worker, generator=g)
+
 
 # # split the adaptation set
 # train_subset_size = int(0.8 * len(adaptation_set))
@@ -545,19 +539,32 @@ else:
 if args.train_adapt_together and  args.finetune:
 	raise Exception('train on 31 and finetune can not be done at the same time' )
 if args.train_adapt_together and not args.finetune:
+	print('=======Merge dev and adaptation sets together')
 	development_set = CARLA_Data(root=trainval_root, root_csv=train_root_csv, config=config,
 								 test=False)  # development dataset 11k samples
+	# add augmentation to develoment set
+	if args.augmentation:
+		print('======data augmentation')
+		augmentation_set = dataset_augmentation()
+		development_set = ConcatDataset([development_set, augmentation_set])
 	adaptation_set = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config,
 								test=False)  # adaptation dataset 100 samples
-
 	train_set = ConcatDataset([development_set, adaptation_set])
-	val_set = adaptation_set
-	train_size = len(train_set)
+	train_size = int(0.9*len(train_set))
+	# val_set = adaptation_set
+	# train_size = len(train_set)
+	train_set, val_set = torch.utils.data.random_split(train_set,
+													   [train_size, len(train_set) - train_size])
+	print('train_set:', train_size, 'val_set:', len(val_set))
 
-# else:
-# 	train_size = len(development_set)
-# 	train_set = development_set
-# 	print('train_set = development_set')
+if args.Test:
+	test_set = CARLA_Data(root=test_root, root_csv=test_root_csv, config=config, test=True)
+	print('test_set:', len(test_set))
+	dataloader_test = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=8, pin_memory=False)
+else:
+	dataloader_train = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=8, pin_memory=True,
+								  worker_init_fn=seed_worker, generator=g)
+	dataloader_val = DataLoader(val_set, batch_size=args.batch_size, shuffle=False, num_workers=8, pin_memory=False)
 
 
 # # For testing small dataset
@@ -605,14 +612,14 @@ trainer = Engine()
 model_parameters = filter(lambda p: p.requires_grad, model.parameters())
 # print([p.requires_grad for p in model_parameters])
 params = sum([np.prod(p.size()) for p in model_parameters])
-print ('Total trainable parameters: ', params)
+print ('======Total trainable parameters: ', params)
 
 # Create logdir
 if not os.path.isdir(args.logdir):
 	os.makedirs(args.logdir)
-	print('Created dir:', args.logdir)
+	print('======Created dir:', args.logdir)
 elif os.path.isfile(os.path.join(args.logdir, 'recent.log')):
-	print('Loading checkpoint from ' + args.logdir)
+	print('======Loading checkpoint from ' + args.logdir)
 	with open(os.path.join(args.logdir, 'recent.log'), 'r') as f:
 		log_table = json.load(f)
 
@@ -631,15 +638,15 @@ elif os.path.isfile(os.path.join(args.logdir, 'recent.log')):
 	if args.finetune:
 
 		if os.path.exists(os.path.join(args.logdir, 'all_finetune_on_'+ kw + 'model.pth')):
-			print('loading last'+'all_finetune_on_'+ kw + 'model.pth')
+			print('======loading last'+'all_finetune_on_'+ kw + 'model.pth')
 			model.load_state_dict(torch.load(os.path.join(args.logdir, 'all_finetune_on_'+ kw + 'model.pth')))
 			optimizer.load_state_dict(torch.load(os.path.join(args.logdir, 'all_finetune_on_' + kw + 'optim.pth')))
 		else:
-			print('loading '+kw+' model')
+			print('======loading '+kw+' model')
 			model.load_state_dict(torch.load(os.path.join(args.logdir, kw+'model.pth')))
 			# optimizer.load_state_dict(torch.load(os.path.join(args.logdir, kw+'optim.pth')))
 	else:
-		print('loading best_model')
+		print('======loading best_model')
 		model.load_state_dict(torch.load(os.path.join(args.logdir, 'best_model.pth')))
 
 
