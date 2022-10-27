@@ -573,8 +573,6 @@ test_root_csv='ml_challenge_test_multi_modal.csv'
 # train_set = CARLA_Data(root=test_root, root_csv=test_root_csv, config=config)
 
 
-
-
 if args.finetune and not args.Test:
 	adaptation_set = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config,
 								test=False)  # adaptation dataset 100 samples
@@ -585,8 +583,6 @@ if args.finetune and not args.Test:
 elif not args.train_adapt_together and not args.Test:
 	development_set = CARLA_Data(root=trainval_root, root_csv=train_root_csv, config=config,
 								 test=False)  # development dataset 11k samples
-
-
 
 	train_size = int(0.8 * len(development_set))
 	train_set, val_set = torch.utils.data.random_split(development_set,
@@ -606,9 +602,17 @@ if args.train_adapt_together and not args.finetune:
 								 test=False)  # development dataset 11k samples
 	# add augmentation to develoment set
 	if args.augmentation:
-		print('======data augmentation')
-		augmentation_set = dataset_augmentation(root_csv='scenario31.csv')
+
+		print('====== Augmentation on adaptation dataset for scenario 31, 32, 33')
+		augmentation_set_31 = dataset_augmentation(root_csv='scenario31.csv')
+		# augmentation_set_32 = dataset_augmentation(root_csv='scenario32.csv')
+		# augmentation_set_33 = dataset_augmentation(root_csv='scenario33.csv')
+		# augmentation_set = ConcatDataset([augmentation_set_31, augmentation_set_32, augmentation_set_33])
+
+		augmentation_set = augmentation_set_31
+
 		development_set = ConcatDataset([development_set, augmentation_set])
+
 	adaptation_set = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config,
 								test=False)  # adaptation dataset 100 samples
 	train_set = ConcatDataset([development_set, adaptation_set])

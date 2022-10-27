@@ -115,8 +115,7 @@ class CARLA_Data(Dataset):
                 # seg = np.array(Image.open(self.root+add_fronts[i][:30]+'_seg'+add_fronts[i][30:]).resize((256,256)))
                 # imgs = cv2.addWeighted(imgs, 0.8, seg, 0.2, 0)
 
-
-                if self.augment['camera'] < 0:  # segmentation added to non augmented data
+                if self.augment['camera'] == 0:  # segmentation added to non augmented data
                     if self.add_mask_seg:
                         imgs = np.array(
                             Image.open(self.root + add_fronts[i][:30] + '_mask' + add_fronts[i][30:]).resize(
