@@ -33,13 +33,11 @@ parser.add_argument('--id', type=str, default='test', help='Unique experiment id
 parser.add_argument('--device', type=str, default='cuda', help='Device to use')
 parser.add_argument('--epochs', type=int, default=150, help='Number of train epochs.')
 parser.add_argument('--lr', type=float, default=2e-4, help='Learning rate.')
-parser.add_argument('--val_every', type=int, default=1, help='Validation frequency (epochs).')
-parser.add_argument('--shuffle_every', type=int, default=6, help='Shuffle the dataset frequency (epochs).')
 parser.add_argument('--batch_size', type=int, default=24, help='Batch size')	# default=24
-parser.add_argument('--logdir', type=str, default='/ibex/scratch/tiany0c/log/log', help='Directory to log data to.')	# /ibex/scratch/tiany0c/log
+parser.add_argument('--logdir', type=str, default='log', help='Directory to log data to.')	# /ibex/scratch/tiany0c/log
 parser.add_argument('--add_velocity', type = int, default=1, help='concatenate velocity map with angle map')
-parser.add_argument('--add_mask', type=int, default=0, help='add mask to the camera data')
-parser.add_argument('--enhanced', type=int, default=1, help='use enhanced camera data')
+parser.add_argument('--add_mask', type=int, default=1, help='add mask to the camera data')
+parser.add_argument('--enhanced', type=int, default=0, help='use enhanced camera data')
 parser.add_argument('--filtered', type=int, default=1, help='use filtered lidar data')
 parser.add_argument('--loss', type=str, default='focal', help='crossentropy or focal loss')
 parser.add_argument('--scheduler', type=int, default=1, help='use scheduler to control the learning rate')
@@ -49,9 +47,9 @@ parser.add_argument('--train_adapt_together', type=int, default=1, help='combine
 parser.add_argument('--finetune', type=int, default=0, help='first train on development set and finetune on 31-34 set')
 parser.add_argument('--Test', type=int, default=0, help='Test')
 parser.add_argument('--augmentation', type=int, default=1, help='data augmentation of camera and lidar')
-parser.add_argument('--angle_norm', type=int, default=0, help='normlize the gps loc with unit, angle can be obtained')
-parser.add_argument('--custom_FoV_lidar', type=int, default=0, help='Custom FoV of lidar')
-parser.add_argument('--add_mask_seg', type=int, default=0, help='add mask and seg on 31&32 images')
+parser.add_argument('--angle_norm', type=int, default=1, help='normlize the gps loc with unit, angle can be obtained')
+parser.add_argument('--custom_FoV_lidar', type=int, default=1, help='Custom FoV of lidar')
+parser.add_argument('--add_mask_seg', type=int, default=1, help='add mask and seg on 31&32 images')
 parser.add_argument('--ema', type=int, default=0, help='exponential moving average')
 
 args = parser.parse_args()
@@ -530,7 +528,7 @@ def createDataset(InputFile, OutputFile, Keyword):
 # data_root='.'
 # trainval_root=data_root+'/MultiModeBeamforming/Multi_Modal/'
 
-data_root = './MultiModeBeamforming/'
+data_root = '../MultiModeBeamforming/'
 
 # data_root = '/efs/data'
 
@@ -606,23 +604,22 @@ if args.train_adapt_together and not args.finetune:
 
 		print('====== Augmentation on adaptation dataset for scenario 31, 32, 33')
 		augmentation_set_31 = dataset_augmentation(root_csv='scenario31.csv')
-		# augmentation_set_32 = dataset_augmentation(root_csv='scenario32.csv')
-		# augmentation_set_33 = dataset_augmentation(root_csv='scenario33.csv')
-		# augmentation_set = ConcatDataset([augmentation_set_31, augmentation_set_32, augmentation_set_33])
+		augmentation_set_32 = dataset_augmentation(root_csv='scenario32.csv')
+		augmentation_set_33 = dataset_augmentation(root_csv='scenario33.csv')
+		augmentation_set = ConcatDataset([augmentation_set_31, augmentation_set_32, augmentation_set_33])
 
-		augmentation_set = augmentation_set_31
+		# augmentation_set = augmentation_set_31
 
 		development_set = ConcatDataset([development_set, augmentation_set])
 
 	adaptation_set = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config,
 								test=False)  # adaptation dataset 100 samples
 	train_set = ConcatDataset([development_set, adaptation_set])
-	train_size = int(0.9*len(train_set))
-	# val_set = adaptation_set
-	# train_size = len(train_set)
-	train_set, val_set = torch.utils.data.random_split(train_set,
-													   [train_size, len(train_set) - train_size])
-	print('train_set:', train_size, 'val_set:', len(val_set))
+	val_set = adaptation_set
+	# train_size = int(0.9*len(train_set))
+	# train_set, val_set = torch.utils.data.random_split(train_set,
+	# 												   [train_size, len(train_set) - train_size])
+	print('train_set:', len(train_set), 'val_set:', len(val_set))
 
 if args.Test:
 	test_set = CARLA_Data(root=test_root, root_csv=test_root_csv, config=config, test=True)

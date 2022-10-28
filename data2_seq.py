@@ -103,42 +103,43 @@ class CARLA_Data(Dataset):
                 break
 
         for i in range(self.seq_len):
-            if 'scenario31' in add_fronts[i] or 'scenario32' in add_fronts[i]:
+            if self.augment['camera'] == 0:
+                if 'scenario31' in add_fronts[i] or 'scenario32' in add_fronts[i]:
 
-                # if self.add_mask:
-                #     imgs = np.array(
-                #         Image.open(self.root + add_fronts[i][:30] + '_mask' + add_fronts[i][30:]).resize((256, 256)))
-                # else:
-                #     imgs = np.array(
-                #         Image.open(self.root + add_fronts[i]).resize((256, 256)))
-                # imgs = np.array(Image.open(self.root + add_fronts[i]).resize((256, 256)))
-                # seg = np.array(Image.open(self.root+add_fronts[i][:30]+'_seg'+add_fronts[i][30:]).resize((256,256)))
-                # imgs = cv2.addWeighted(imgs, 0.8, seg, 0.2, 0)
+                    # if self.add_mask:
+                    #     imgs = np.array(
+                    #         Image.open(self.root + add_fronts[i][:30] + '_mask' + add_fronts[i][30:]).resize((256, 256)))
+                    # else:
+                    #     imgs = np.array(
+                    #         Image.open(self.root + add_fronts[i]).resize((256, 256)))
+                    # imgs = np.array(Image.open(self.root + add_fronts[i]).resize((256, 256)))
+                    # seg = np.array(Image.open(self.root+add_fronts[i][:30]+'_seg'+add_fronts[i][30:]).resize((256,256)))
+                    # imgs = cv2.addWeighted(imgs, 0.8, seg, 0.2, 0)
 
-                if self.augment['camera'] == 0:  # segmentation added to non augmented data
-                    if self.add_mask_seg:
-                        imgs = np.array(
-                            Image.open(self.root + add_fronts[i][:30] + '_mask' + add_fronts[i][30:]).resize(
-                                (256, 256)))
-                    else:
-                        imgs = np.array(Image.open(self.root + add_fronts[i]).resize((256, 256)))
-                        seg = np.array(Image.open(self.root+add_fronts[i][:30]+'_seg'+add_fronts[i][30:]).resize((256,256)))
-                        imgs = cv2.addWeighted(imgs, 0.8, seg, 0.2, 0)
+                    if self.augment['camera'] == 0:  # segmentation added to non augmented data
+                        if self.add_mask_seg:
+                            imgs = np.array(
+                                Image.open(self.root + add_fronts[i][:30] + '_mask' + add_fronts[i][30:]).resize(
+                                    (256, 256)))
+                        else:
+                            imgs = np.array(Image.open(self.root + add_fronts[i]).resize((256, 256)))
+                            seg = np.array(Image.open(self.root+add_fronts[i][:30]+'_seg'+add_fronts[i][30:]).resize((256,256)))
+                            imgs = cv2.addWeighted(imgs, 1, seg, 0.5, 0)
 
-            else:
-                if self.add_mask & self.enhanced:
-                    raise Exception("mask or enhance, both are not possible")
-                if self.add_mask:
-                    imgs = np.array(
-                        Image.open(self.root + add_fronts[i][:30] + '_mask' + add_fronts[i][30:]).resize((256, 256)))
-                elif self.enhanced:
-                    imgs = np.array(
-                        Image.open(self.root + add_fronts[i]).resize((256, 256)))
                 else:
-                    imgs = np.array(Image.open(self.root + add_fronts[i][:30]+'_raw'+add_fronts[i][30:]).resize((256, 256)))
-
-
-            data['fronts'].append(torch.from_numpy(np.transpose(np.array(Image.open(self.root+add_fronts[i]).resize((256,256))),(2,0,1))))
+                    if self.add_mask & self.enhanced:
+                        raise Exception("mask or enhance, both are not possible")
+                    if self.add_mask:
+                        imgs = np.array(
+                            Image.open(self.root + add_fronts[i][:30] + '_mask' + add_fronts[i][30:]).resize((256, 256)))
+                    elif self.enhanced:
+                        imgs = np.array(
+                            Image.open(self.root + add_fronts[i]).resize((256, 256)))
+                    else:
+                        imgs = np.array(Image.open(self.root + add_fronts[i][:30]+'_raw'+add_fronts[i][30:]).resize((256, 256)))
+                data['fronts'].append(torch.from_numpy(np.transpose(imgs, (2, 0, 1))))
+            else:
+                data['fronts'].append(torch.from_numpy(np.transpose(np.array(Image.open(self.root+add_fronts[i]).resize((256,256))),(2,0,1))))
             radar_ang = np.expand_dims(np.load(self.root + add_radars[i]), 0)
 
             if self.add_velocity:
