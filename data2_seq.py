@@ -18,7 +18,7 @@ import cv2
 import re
 
 class CARLA_Data(Dataset):
-    def __init__(self, root, root_csv, config, test=False, augment={'camera':0, 'lidar':0, 'radar':0}):
+    def __init__(self, root, root_csv, config, test=False, augment={'camera':0, 'lidar':0, 'radar':0},flip=False):
 
         self.dataframe = pd.read_csv(root+root_csv)
         self.root=root
@@ -33,6 +33,7 @@ class CARLA_Data(Dataset):
         self.augment = augment
         self.custom_FoV_lidar = config.custom_FoV_lidar
         self.add_mask_seg = config.add_mask_seg
+        self.flip = flip
 
     def __len__(self):
         """Returns the length of the dataset. """
@@ -46,6 +47,8 @@ class CARLA_Data(Dataset):
 
         data['radars'] = []
         data['gps'] = self.pos_input_normalized[index,:,:]
+        if self.flip:
+            data['gps'][:,1] = -data['gps'][:,1]
         data['scenario'] = []
         data['loss_weight'] = []
 
@@ -137,13 +140,23 @@ class CARLA_Data(Dataset):
                             Image.open(self.root + add_fronts[i]).resize((256, 256)))
                     else:
                         imgs = np.array(Image.open(self.root + add_fronts[i][:30]+'_raw'+add_fronts[i][30:]).resize((256, 256)))
-                data['fronts'].append(torch.from_numpy(np.transpose(imgs, (2, 0, 1))))
+                # data['fronts'].append(torch.from_numpy(np.transpose(imgs, (2, 0, 1))))
             else:
-                data['fronts'].append(torch.from_numpy(np.transpose(np.array(Image.open(self.root+add_fronts[i]).resize((256,256))),(2,0,1))))
-            radar_ang = np.expand_dims(np.load(self.root + add_radars[i]), 0)
+                imgs = np.array(Image.open(self.root+add_fronts[i]).resize((256,256)))
+
+            radar_ang1 = np.load(self.root + add_radars[i])
+            if self.flip:
+                imgs = np.ascontiguousarray(np.flip(imgs,1))
+                radar_ang1 = np.ascontiguousarray(np.flip(radar_ang1,1))
+            data['fronts'].append(torch.from_numpy(np.transpose(imgs, (2, 0, 1))))
+
+            radar_ang = np.expand_dims(radar_ang1, 0)
 
             if self.add_velocity:
-                radar_vel = np.expand_dims(np.load(self.root + add_radars[i].replace('ang','vel')), 0)
+                radar_vel1 = np.load(self.root + add_radars[i].replace('ang','vel'))
+                if self.flip:
+                    radar_vel1 = np.ascontiguousarray(np.flip(radar_vel1,1))
+                radar_vel = np.expand_dims(radar_vel1, 0)
                 data['radars'].append(torch.from_numpy(np.concatenate([radar_ang, radar_vel], 0)))
             else:
                 data['radars'].append(torch.from_numpy(radar_ang))
@@ -152,6 +165,8 @@ class CARLA_Data(Dataset):
             #lidar data
             PT = np.asarray(o3d.io.read_point_cloud(self.root+add_lidars[i]).points)
             PT = lidar_to_histogram_features(PT, add_lidars[i],custom_FoV=self.custom_FoV_lidar)
+            if self.flip:
+                PT=np.ascontiguousarray(np.flip(PT,2))
             data['lidars'].append(PT)
 
         if not self.test:
@@ -162,9 +177,11 @@ class CARLA_Data(Dataset):
             y_data = stats.norm.pdf(x_data, beamidx, 0.5)
             data_beam = np.zeros((64))
             data_beam[x_data] = y_data * 1.25
+            if self.flip:
+                beamidx = 63-beamidx
+                data_beam = np.ascontiguousarray(np.flip(data_beam,0))
             data['beam'].append(data_beam)
             data['beamidx'].append(beamidx)
-
         return data
 
         
@@ -249,7 +266,27 @@ def Normalize_loc(root, dataframe,angle_norm):
     pos_stacked_normalized = (pos_diff - pos_min) / (pos_max - pos_min)
     if angle_norm:
         pos_stacked_normalized = normalize(pos_diff, axis=1)
+
     pos_input_normalized = np.zeros((n_samples, 2, 2))
     pos_input_normalized[:, 0, :] = pos_stacked_normalized[:n_samples]
     pos_input_normalized[:, 1, :] = pos_stacked_normalized[n_samples:]
+    if angle_norm:
+        angle = np.arctan(pos_input_normalized[..., 1] / pos_input_normalized[..., 0]) / np.pi * 180
+        for sample_idx in tqdm(range(n_samples)):
+            if 'scenario31' in pos_bs_abs_paths[sample_idx]:
+                angle[sample_idx] -= -50.52
+            if 'scenario32' in pos_bs_abs_paths[sample_idx]:
+                angle[sample_idx] -= 44.8
+            if 'scenario33' in pos_bs_abs_paths[sample_idx]:
+                angle[sample_idx] -= 55.6
+            if 'scenario34' in pos_bs_abs_paths[sample_idx]:
+                angle[sample_idx] -= -60
+        idx = angle > 90
+        angle[idx] -= 180
+        idx = angle < -90
+        angle[idx] += 180
+        pos_input_normalized[:, 0, 1] = np.sin(angle[:, 0] / 180 * np.pi)
+        pos_input_normalized[:, 0, 0] = np.cos(angle[:, 0] / 180 * np.pi)
+        pos_input_normalized[:, 1, 1] = np.sin(angle[:, 1] / 180 * np.pi)
+        pos_input_normalized[:, 1, 0] = np.cos(angle[:, 1] / 180 * np.pi)
     return pos_input_normalized

@@ -32,12 +32,12 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--id', type=str, default='test', help='Unique experiment identifier.')
 parser.add_argument('--device', type=str, default='cuda', help='Device to use')
 parser.add_argument('--epochs', type=int, default=150, help='Number of train epochs.')
-parser.add_argument('--lr', type=float, default=2e-4, help='Learning rate.')
-parser.add_argument('--batch_size', type=int, default=24, help='Batch size')	# default=24
+parser.add_argument('--lr', type=float, default=5e-4, help='Learning rate.')
+parser.add_argument('--batch_size', type=int, default=1, help='Batch size')	# default=24
 parser.add_argument('--logdir', type=str, default='log', help='Directory to log data to.')	# /ibex/scratch/tiany0c/log
 parser.add_argument('--add_velocity', type = int, default=1, help='concatenate velocity map with angle map')
-parser.add_argument('--add_mask', type=int, default=1, help='add mask to the camera data')
-parser.add_argument('--enhanced', type=int, default=0, help='use enhanced camera data')
+parser.add_argument('--add_mask', type=int, default=0, help='add mask to the camera data')
+parser.add_argument('--enhanced', type=int, default=1, help='use enhanced camera data')
 parser.add_argument('--filtered', type=int, default=1, help='use filtered lidar data')
 parser.add_argument('--loss', type=str, default='focal', help='crossentropy or focal loss')
 parser.add_argument('--scheduler', type=int, default=1, help='use scheduler to control the learning rate')
@@ -46,12 +46,12 @@ parser.add_argument('--temp_coef', type=int, default=1, help='apply temperature 
 parser.add_argument('--train_adapt_together', type=int, default=1, help='combine train and adaptation dataset together')
 parser.add_argument('--finetune', type=int, default=0, help='first train on development set and finetune on 31-34 set')
 parser.add_argument('--Test', type=int, default=0, help='Test')
-parser.add_argument('--augmentation', type=int, default=1, help='data augmentation of camera and lidar')
+parser.add_argument('--augmentation', type=int, default=0, help='data augmentation of camera and lidar')
 parser.add_argument('--angle_norm', type=int, default=1, help='normlize the gps loc with unit, angle can be obtained')
 parser.add_argument('--custom_FoV_lidar', type=int, default=1, help='Custom FoV of lidar')
-parser.add_argument('--add_mask_seg', type=int, default=1, help='add mask and seg on 31&32 images')
+parser.add_argument('--add_mask_seg', type=int, default=0, help='add mask and seg on 31&32 images')
 parser.add_argument('--ema', type=int, default=0, help='exponential moving average')
-
+parser.add_argument('--flip', type=int, default=1, help='flip all the data to augmentation')
 args = parser.parse_args()
 args.logdir = os.path.join(args.logdir, args.id)
 
@@ -495,6 +495,7 @@ config.custom_FoV_lidar=args.custom_FoV_lidar
 config.add_mask_seg = args.add_mask_seg
 config.filtered = args.filtered
 
+
 import random
 import numpy
 seed = 100
@@ -523,12 +524,12 @@ def createDataset(InputFile, OutputFile, Keyword):
 						writer.writerow(row)
 			except:
 				   continue
-# # os.environ["CUDA_VISIBLE_DEVICES"] = "3"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
 # data_root='/home/tiany0c/Downloads'
 # data_root='.'
-# trainval_root=data_root+'/MultiModeBeamforming/Multi_Modal/'
+# trainval_root=data_root+'/home/tiany0c/Downloads/MultiModeBeamforming/Multi_Modal/'
 
-data_root = '../MultiModeBeamforming/'
+data_root = '/home/tiany0c/Downloads/MultiModeBeamforming/'
 
 # data_root = '/efs/data'
 
@@ -599,6 +600,15 @@ if args.train_adapt_together and not args.finetune:
 	print('=======Merge dev and adaptation sets together')
 	development_set = CARLA_Data(root=trainval_root, root_csv=train_root_csv, config=config,
 								 test=False)  # development dataset 11k samples
+	adaptation_set = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config,
+								test=False)  # adaptation dataset 100 samples
+	if args.flip:
+		development_set_flip = CARLA_Data(root=trainval_root, root_csv=train_root_csv, config=config,
+									 test=False, flip=True)  # development dataset 11k samples
+		adaptation_set_flip = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config,
+									test=False, flip=True)  # adaptation dataset 100 samples
+		development_set = ConcatDataset([development_set, development_set_flip])
+		adaptation_set = ConcatDataset([adaptation_set, adaptation_set_flip])
 	# add augmentation to develoment set
 	if args.augmentation:
 
@@ -612,13 +622,10 @@ if args.train_adapt_together and not args.finetune:
 
 		development_set = ConcatDataset([development_set, augmentation_set])
 
-	adaptation_set = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config,
-								test=False)  # adaptation dataset 100 samples
 	train_set = ConcatDataset([development_set, adaptation_set])
-	val_set = adaptation_set
-	# train_size = int(0.9*len(train_set))
-	# train_set, val_set = torch.utils.data.random_split(train_set,
-	# 												   [train_size, len(train_set) - train_size])
+	# val_set = adaptation_set
+	train_size = int(0.9*len(train_set))
+	train_set, val_set = torch.utils.data.random_split(train_set, [train_size, len(train_set) - train_size])
 	print('train_set:', len(train_set), 'val_set:', len(val_set))
 
 if args.Test:
@@ -667,11 +674,11 @@ if args.scheduler:
 	# scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
 	scheduler = CyclicCosineDecayLR(optimizer,
 	                                init_decay_epochs=15,
-	                                min_decay_lr=1e-6,
+	                                min_decay_lr=2.5e-6,
 	                                restart_interval = 10,
-	                                restart_lr=5e-5,
+	                                restart_lr=12.5e-5,
 	                                warmup_epochs=10,
-	                                warmup_start_lr=1e-6)
+	                                warmup_start_lr=2.5e-6)
 trainer = Engine()
 model_parameters = filter(lambda p: p.requires_grad, model.parameters())
 # print([p.requires_grad for p in model_parameters])
