@@ -44,7 +44,6 @@ class CARLA_Data(Dataset):
         data = dict()
         data['fronts'] = []
         data['lidars'] = []
-
         data['radars'] = []
         data['gps'] = self.pos_input_normalized[index,:,:]
         if self.flip:
@@ -58,10 +57,10 @@ class CARLA_Data(Dataset):
         add_lidars = []
         add_radars = []
         # instanceidx=['1','2','5']
-        instanceidx=['1','2', '3', '4', '5']
-
+        instanceidx=['1','2', '3', '4', '5']#5 time instances
+        ## data augmentation
         for stri in instanceidx:
-
+            # camera data
             camera_dir = self.dataframe['unit1_rgb_'+stri][index]
             if self.augment['camera'] > 0: # and 'scenario31' in camera_dir:
                 camera_dir = re.sub('camera_data/', 'camera_data_aug/', camera_dir)
@@ -69,7 +68,7 @@ class CARLA_Data(Dataset):
                 add_fronts.append(camera_dir)
             else:
                 add_fronts.append(self.dataframe['unit1_rgb_'+stri][index])
-
+            #lidar data
             lidar_dir = self.dataframe['unit1_lidar_'+stri][index]
             if self.augment['lidar'] > 0:  # and 'scenario31' in lidar_dir:
                 lidar_dir = re.sub('lidar_data/', 'lidar_data_aug/', lidar_dir)
@@ -80,7 +79,7 @@ class CARLA_Data(Dataset):
                 add_lidars.append(lidar_dir)
             else:
                 add_lidars.append(self.dataframe['unit1_lidar_'+stri][index])
-
+            # radar data
             radar_dir = self.dataframe['unit1_radar_'+stri][index]
             if self.augment['radar'] > 0:
                 radar_dir = re.sub('radar_data/', 'radar_data_ang_aug/', radar_dir)
@@ -88,15 +87,11 @@ class CARLA_Data(Dataset):
                 radar_dir = re.sub('radar_data/', 'radar_data_ang/', radar_dir)
             add_radars.append(radar_dir)
 
-            #add_radars.append(add_radars1[:29] + '_vel' + add_radars1[29:])
-            #add_radars.append(add_radars1[:29] + '_cube' + add_radars1[29:])
-
         self.seq_len = len(instanceidx)
 
         # check which scenario is the data sample associated 
         scenarios = ['scenario31', 'scenario32', 'scenario33', 'scenario34']
         loss_weights = [1.0, 1.0, 1.0, 1.0]
-        # loss_weights = [227.2727, 3.5804, 2.9112, 2.6824]
 
         for i in range(len(scenarios)):
             s = scenarios[i]
@@ -108,27 +103,21 @@ class CARLA_Data(Dataset):
         for i in range(self.seq_len):
             if self.augment['camera'] == 0:
                 if 'scenario31' in add_fronts[i] or 'scenario32' in add_fronts[i]:
-
-                    # if self.add_mask:
-                    #     imgs = np.array(
-                    #         Image.open(self.root + add_fronts[i][:30] + '_mask' + add_fronts[i][30:]).resize((256, 256)))
-                    # else:
-                    #     imgs = np.array(
-                    #         Image.open(self.root + add_fronts[i]).resize((256, 256)))
-                    # imgs = np.array(Image.open(self.root + add_fronts[i]).resize((256, 256)))
-                    # seg = np.array(Image.open(self.root+add_fronts[i][:30]+'_seg'+add_fronts[i][30:]).resize((256,256)))
-                    # imgs = cv2.addWeighted(imgs, 0.8, seg, 0.2, 0)
-
                     if self.augment['camera'] == 0:  # segmentation added to non augmented data
                         if self.add_mask_seg:
                             imgs = np.array(
                                 Image.open(self.root + add_fronts[i][:30] + '_mask' + add_fronts[i][30:]).resize(
                                     (256, 256)))
+                            seg = np.array(
+                                Image.open(self.root + add_fronts[i][:30] + '_seg' + add_fronts[i][30:]).resize(
+                                    (256, 256)))
+                            a = seg[..., 2]
+                            a = a[:, :, np.newaxis]
+                            a = np.concatenate([a, a, a], axis=2)
+                            seg_car = cv2.bitwise_and(imgs, a)
+                            imgs = cv2.addWeighted(imgs, 0.8, seg_car, 0.5, 0)
                         else:
                             imgs = np.array(Image.open(self.root + add_fronts[i]).resize((256, 256)))
-                            seg = np.array(Image.open(self.root+add_fronts[i][:30]+'_seg'+add_fronts[i][30:]).resize((256,256)))
-                            imgs = cv2.addWeighted(imgs, 1, seg, 0.5, 0)
-
                 else:
                     if self.add_mask & self.enhanced:
                         raise Exception("mask or enhance, both are not possible")
@@ -140,16 +129,15 @@ class CARLA_Data(Dataset):
                             Image.open(self.root + add_fronts[i]).resize((256, 256)))
                     else:
                         imgs = np.array(Image.open(self.root + add_fronts[i][:30]+'_raw'+add_fronts[i][30:]).resize((256, 256)))
-                # data['fronts'].append(torch.from_numpy(np.transpose(imgs, (2, 0, 1))))
             else:
                 imgs = np.array(Image.open(self.root+add_fronts[i]).resize((256,256)))
-
+            #radar data
             radar_ang1 = np.load(self.root + add_radars[i])
+            # flip data augmentation
             if self.flip:
                 imgs = np.ascontiguousarray(np.flip(imgs,1))
                 radar_ang1 = np.ascontiguousarray(np.flip(radar_ang1,1))
             data['fronts'].append(torch.from_numpy(np.transpose(imgs, (2, 0, 1))))
-
             radar_ang = np.expand_dims(radar_ang1, 0)
 
             if self.add_velocity:
@@ -160,8 +148,6 @@ class CARLA_Data(Dataset):
                 data['radars'].append(torch.from_numpy(np.concatenate([radar_ang, radar_vel], 0)))
             else:
                 data['radars'].append(torch.from_numpy(radar_ang))
-            
-            # data['radars'].append(torch.from_numpy(np.expand_dims(np.load(self.root+add_radars[i]),0)))
             #lidar data
             PT = np.asarray(o3d.io.read_point_cloud(self.root+add_lidars[i]).points)
             PT = lidar_to_histogram_features(PT, add_lidars[i],custom_FoV=self.custom_FoV_lidar)
@@ -174,6 +160,7 @@ class CARLA_Data(Dataset):
             data['beamidx'] = []
             beamidx = self.dataframe['unit1_beam'][index] - 1
             x_data = range(max(beamidx - 5, 0), min(beamidx + 5, 63) + 1)
+            #Gaussian distributed target instead of one-hot
             y_data = stats.norm.pdf(x_data, beamidx, 0.5)
             data_beam = np.zeros((64))
             data_beam[x_data] = y_data * 1.25
@@ -198,6 +185,7 @@ def lidar_to_histogram_features(lidar, address,custom_FoV):
         y_meters_max = 50
         xbins = np.linspace(-x_meters_max, 0, 257)
         ybins = np.linspace(-y_meters_max, y_meters_max, 257)
+        # custom field of view of lidar data
         if custom_FoV:
             if 'scenario31' in addr:
                 xbins = np.linspace(-70, 0, 257)
@@ -285,8 +273,8 @@ def Normalize_loc(root, dataframe,angle_norm):
         angle[idx] -= 180
         idx = angle < -90
         angle[idx] += 180
-        pos_input_normalized[:, 0, 1] = np.sin(angle[:, 0] / 180 * np.pi)
-        pos_input_normalized[:, 0, 0] = np.cos(angle[:, 0] / 180 * np.pi)
-        pos_input_normalized[:, 1, 1] = np.sin(angle[:, 1] / 180 * np.pi)
-        pos_input_normalized[:, 1, 0] = np.cos(angle[:, 1] / 180 * np.pi)
+        pos_input_normalized[:, 0, 1] = angle[:, 0] / 180 * np.pi
+        pos_input_normalized[:, 0, 0] = angle[:, 0] / 180 * np.pi
+        pos_input_normalized[:, 1, 1] = angle[:, 1] / 180 * np.pi
+        pos_input_normalized[:, 1, 0] = angle[:, 1] / 180 * np.pi
     return pos_input_normalized

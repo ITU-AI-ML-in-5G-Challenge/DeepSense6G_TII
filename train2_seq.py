@@ -33,12 +33,12 @@ parser.add_argument('--id', type=str, default='test', help='Unique experiment id
 parser.add_argument('--device', type=str, default='cuda', help='Device to use')
 parser.add_argument('--epochs', type=int, default=150, help='Number of train epochs.')
 parser.add_argument('--lr', type=float, default=5e-4, help='Learning rate.')
-parser.add_argument('--batch_size', type=int, default=1, help='Batch size')	# default=24
+parser.add_argument('--batch_size', type=int, default=6, help='Batch size')	# default=24
 parser.add_argument('--logdir', type=str, default='log', help='Directory to log data to.')	# /ibex/scratch/tiany0c/log
 parser.add_argument('--add_velocity', type = int, default=1, help='concatenate velocity map with angle map')
 parser.add_argument('--add_mask', type=int, default=0, help='add mask to the camera data')
 parser.add_argument('--enhanced', type=int, default=1, help='use enhanced camera data')
-parser.add_argument('--filtered', type=int, default=1, help='use filtered lidar data')
+parser.add_argument('--filtered', type=int, default=0, help='use filtered lidar data')
 parser.add_argument('--loss', type=str, default='focal', help='crossentropy or focal loss')
 parser.add_argument('--scheduler', type=int, default=1, help='use scheduler to control the learning rate')
 parser.add_argument('--load_previous_best', type=int, default=0, help='load previous best pretrained model ')
@@ -46,12 +46,12 @@ parser.add_argument('--temp_coef', type=int, default=1, help='apply temperature 
 parser.add_argument('--train_adapt_together', type=int, default=1, help='combine train and adaptation dataset together')
 parser.add_argument('--finetune', type=int, default=0, help='first train on development set and finetune on 31-34 set')
 parser.add_argument('--Test', type=int, default=0, help='Test')
-parser.add_argument('--augmentation', type=int, default=0, help='data augmentation of camera and lidar')
+parser.add_argument('--augmentation', type=int, default=1, help='data augmentation of camera and lidar')
 parser.add_argument('--angle_norm', type=int, default=1, help='normlize the gps loc with unit, angle can be obtained')
 parser.add_argument('--custom_FoV_lidar', type=int, default=1, help='Custom FoV of lidar')
 parser.add_argument('--add_mask_seg', type=int, default=0, help='add mask and seg on 31&32 images')
 parser.add_argument('--ema', type=int, default=0, help='exponential moving average')
-parser.add_argument('--flip', type=int, default=1, help='flip all the data to augmentation')
+parser.add_argument('--flip', type=int, default=0, help='flip all the data to augmentation')
 args = parser.parse_args()
 args.logdir = os.path.join(args.logdir, args.id)
 
@@ -114,22 +114,17 @@ class Engine(object):
 				lidars.append(data['lidars'][i].to(args.device, dtype=torch.float32))
 				radars.append(data['radars'][i].to(args.device, dtype=torch.float32))
 
-			# velocity=torch.zeros((data['fronts'][0].shape[0])).to(args.device, dtype=torch.float32)
 			pred_beams = model(fronts, lidars, radars, gps)
 
 			gt_beamidx = data['beamidx'][0].to(args.device, dtype=torch.long)
 			gt_beams = data['beam'][0].to(args.device, dtype=torch.float32)
 
 			running_acc += (torch.argmax(pred_beams, dim=1) == gt_beamidx).sum().item()
-			# print('Pre',torch.argmax(pred_beams, dim=1))
-			# print(pred_beams[0,:])
-			# print(torch.argmax(pred_beams, dim=1) == gt_beamidx)
 
 			if args.temp_coef:
 				loss = self.criterion(pred_beams, gt_beams)
 			else:
 				loss = self.criterion(pred_beams, gt_beamidx)
-			# loss = torch.sum(loss * data['loss_weight'].to(args.device, dtype=torch.float32))
 
 			gt_beam_all.append(data['beamidx'][0])
 
@@ -144,7 +139,6 @@ class Engine(object):
 			if args.ema:
 				ema.update()	# during training, after update parameters, update shadow weights
 
-			# writer.add_scalar('train_loss', loss.item(), self.cur_iter)
 			self.cur_iter += 1
 		pred_beam_all = np.squeeze(np.concatenate(pred_beam_all, 0))
 
@@ -212,10 +206,8 @@ class Engine(object):
 					loss = self.criterion(pred_beams, gt_beams)
 				else:
 					loss = self.criterion(pred_beams, gt_beamidx)
-				# loss = torch.sum(loss * data['loss_weight'].to(args.device, dtype=torch.float32))
 
 				wp_epoch += float(loss.item())
-				# wp_epoch += float(self.criterion(pred_beams, gt_beams))
 				num_batches += 1
 				scenario_all.append(data['scenario'])
 
@@ -235,24 +227,12 @@ class Engine(object):
 						writer.add_scalars('curr_acc_val', {s + 'beam' + str(i):curr_acc_s[i]}, self.cur_epoch)
 					writer.add_scalars('DBA_score_val', {s:DBA_score_s}, self.cur_epoch)
 
-			# curr_acc31=compute_acc(pred_beam_all[:50,:], gt_beam_all[:50], top_k=[1,2,3])
-			# DBA_score31=compute_DBA_score(pred_beam_all[:50,:], gt_beam_all[:50], max_k=3, delta=5)
-			# curr_acc32 = compute_acc(pred_beam_all[50:75, :], gt_beam_all[50:75], top_k=[1, 2, 3])
-			# DBA_score32 = compute_DBA_score(pred_beam_all[50:75, :], gt_beam_all[50:75], max_k=3, delta=5)
-			# curr_acc33 = compute_acc(pred_beam_all[75:, :], gt_beam_all[75:], top_k=[1, 2, 3])
-			# DBA_score33 = compute_DBA_score(pred_beam_all[75:, :], gt_beam_all[75:], max_k=3, delta=5)
-			# print('31:', curr_acc31, DBA_score31)
-			# print('32:', curr_acc32, DBA_score32)
-			# print('33:', curr_acc33, DBA_score33)
-
 			curr_acc = compute_acc(pred_beam_all, gt_beam_all, top_k=[1,2,3])
 			DBA_score_val = compute_DBA_score(pred_beam_all, gt_beam_all, max_k=3, delta=5)
 			wp_loss = wp_epoch / float(num_batches)
 			tqdm.write(f'Epoch {self.cur_epoch:03d}, Batch {batch_num:03d}:' + f' Wp: {wp_loss:3.3f}')
 			print('Val top beam acc: ',curr_acc, 'DBA score: ', DBA_score_val)
-
 			writer.add_scalars('DBA_score_val', {'scenario_all':DBA_score_val}, self.cur_epoch)
-			
 			writer.add_scalar('curr_loss_val', wp_loss, self.cur_epoch)
 
 			self.val_loss.append(wp_loss)
@@ -296,10 +276,6 @@ class Engine(object):
 
 	def save(self):
 		save_best = False
-		# if self.val_loss[-1] <= self.bestval:
-		# 	self.bestval = self.val_loss[-1]
-		# 	self.bestval_epoch = self.cur_epoch
-		# 	save_best = True
 		print('best', self.bestval, self.bestval_epoch)
 
 		if self.DBA[-1] >= self.bestval:
@@ -319,16 +295,11 @@ class Engine(object):
 		}
 
 		# Save ckpt for every epoch
-		# torch.save(model.state_dict(), os.path.join(args.logdir, 'model_%d.pth'%self.cur_epoch))
-		#
 		# Save the recent model/optimizer states
 		torch.save(model.state_dict(), os.path.join(args.logdir, 'final_model.pth'))
-		# torch.save(optimizer.state_dict(), os.path.join(args.logdir, 'recent_optim.pth'))
-		#
 		# # Log other data corresponding to the recent model
 		with open(os.path.join(args.logdir, 'recent.log'), 'w') as f:
 			f.write(json.dumps(log_table))
-		#
 		# tqdm.write('====== Saved recent model ======>')
 
 		if save_best:
@@ -350,8 +321,6 @@ class FocalLoss1(nn.Module):
 			target = torch.nn.functional.one_hot(target, num_classes=64)
 		loss = torchvision.ops.sigmoid_focal_loss(input, target.float(), alpha=self.alpha, gamma=self.gamma,
 												  reduction='mean')
-
-		# loss = torchvision.ops.sigmoid_focal_loss(input, target, alpha=self.alpha,gamma=self.gamma,reduction='mean')
 		return loss
 
 class FocalLoss(torch.nn.modules.loss._WeightedLoss):
@@ -524,12 +493,12 @@ def createDataset(InputFile, OutputFile, Keyword):
 						writer.writerow(row)
 			except:
 				   continue
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1"
+
 # data_root='/home/tiany0c/Downloads'
 # data_root='.'
 # trainval_root=data_root+'/home/tiany0c/Downloads/MultiModeBeamforming/Multi_Modal/'
 
-data_root = '/home/tiany0c/Downloads/MultiModeBeamforming/'
+data_root = './MultiModeBeamforming/'
 
 # data_root = '/efs/data'
 
@@ -544,35 +513,27 @@ trainval_root=data_root+'/Multi_Modal/'
 
 train_root_csv='ml_challenge_dev_multi_modal.csv'
 
-
+if not args.Test:
 # trainval_root='/efs/data/Adaptation_dataset_multi_modal/'
 # train_root_csv='ml_challenge_data_adaptation_multi_modal.csv'
-for keywords in ['scenario32','scenario33','scenario34']:
-	createDataset(trainval_root+train_root_csv, trainval_root+keywords,keywords)
-	print(trainval_root+keywords)
+	for keywords in ['scenario32','scenario33','scenario34']:
+		createDataset(trainval_root+train_root_csv, trainval_root+keywords,keywords)
+		print(trainval_root+keywords)
 
-# val_root=data_root+'/MultiModeBeamforming/Adaptation_dataset_multi_modal/'
-val_root = data_root + '/Adaptation_dataset_multi_modal/'
+	# val_root=data_root+'/MultiModeBeamforming/Adaptation_dataset_multi_modal/'
+	val_root = data_root + '/Adaptation_dataset_multi_modal/'
 
-# val_root='/efs/data/Adaptation_dataset_multi_modal/'
-val_root_csv='ml_challenge_data_adaptation_multi_modal.csv'
-for keywords in ['scenario31','scenario32','scenario33']:
-	createDataset(val_root+val_root_csv, val_root+keywords,keywords)
-	print(val_root + keywords)
+	# val_root='/efs/data/Adaptation_dataset_multi_modal/'
+	val_root_csv='ml_challenge_data_adaptation_multi_modal.csv'
+	for keywords in ['scenario31','scenario32','scenario33']:
+		createDataset(val_root+val_root_csv, val_root+keywords,keywords)
+		print(val_root + keywords)
 
-# test_root=data_root+'/MultiModeBeamforming/Multi_Modal_Test/'
-test_root = data_root + '/Multi_Modal_Test/'
 
-# test_root='/efs/data/Multi_Modal_Test/'
-test_root_csv='ml_challenge_test_multi_modal.csv'
 
-# test_root='/efs/data/Multi_Modal/'
-# test_root_csv='ml_challenge_dev_multi_modal.csv'
+
 
 # Data
-# train_set = CARLA_Data(root=test_root, root_csv=test_root_csv, config=config)
-
-
 if args.finetune and not args.Test:
 	adaptation_set = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config,
 								test=False)  # adaptation dataset 100 samples
@@ -590,45 +551,46 @@ elif not args.train_adapt_together and not args.Test:
 	print('train_set:', train_size, 'val_set:', len(val_set))
 	dataloader_val = DataLoader(val_set, batch_size=args.batch_size, shuffle=False, num_workers=8, pin_memory=False)
 
+if not args.Test:
+	if args.train_adapt_together and  args.finetune:
+		raise Exception('train on 31 and finetune can not be done at the same time' )
+	if args.train_adapt_together and not args.finetune:
+		print('=======Merge dev and adaptation sets together')
+		development_set = CARLA_Data(root=trainval_root, root_csv=train_root_csv, config=config,
+									 test=False)  # development dataset 11k samples
+		adaptation_set = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config,
+									test=False)  # adaptation dataset 100 samples
+		if args.flip:
+			development_set_flip = CARLA_Data(root=trainval_root, root_csv=train_root_csv, config=config,
+										 test=False, flip=True)  # development dataset 11k samples
+			adaptation_set_flip = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config,
+										test=False, flip=True)  # adaptation dataset 100 samples
+			development_set = ConcatDataset([development_set, development_set_flip])
+			adaptation_set = ConcatDataset([adaptation_set, adaptation_set_flip])
+		# add augmentation to develoment set
+		if args.augmentation:
 
-# # split the adaptation set
-# train_subset_size = int(0.8 * len(adaptation_set))
-# train_subset, val_set = torch.utils.data.random_split(adaptation_set, [train_subset_size, len(adaptation_set) - train_subset_size])
-if args.train_adapt_together and  args.finetune:
-	raise Exception('train on 31 and finetune can not be done at the same time' )
-if args.train_adapt_together and not args.finetune:
-	print('=======Merge dev and adaptation sets together')
-	development_set = CARLA_Data(root=trainval_root, root_csv=train_root_csv, config=config,
-								 test=False)  # development dataset 11k samples
-	adaptation_set = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config,
-								test=False)  # adaptation dataset 100 samples
-	if args.flip:
-		development_set_flip = CARLA_Data(root=trainval_root, root_csv=train_root_csv, config=config,
-									 test=False, flip=True)  # development dataset 11k samples
-		adaptation_set_flip = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config,
-									test=False, flip=True)  # adaptation dataset 100 samples
-		development_set = ConcatDataset([development_set, development_set_flip])
-		adaptation_set = ConcatDataset([adaptation_set, adaptation_set_flip])
-	# add augmentation to develoment set
-	if args.augmentation:
+			print('====== Augmentation on adaptation dataset for scenario 31, 32, 33')
+			augmentation_set_31 = dataset_augmentation(root_csv='scenario31.csv')
+			augmentation_set_32 = dataset_augmentation(root_csv='scenario32.csv')
+			augmentation_set_33 = dataset_augmentation(root_csv='scenario33.csv')
+			augmentation_set = ConcatDataset([augmentation_set_31, augmentation_set_32, augmentation_set_33])
 
-		print('====== Augmentation on adaptation dataset for scenario 31, 32, 33')
-		augmentation_set_31 = dataset_augmentation(root_csv='scenario31.csv')
-		augmentation_set_32 = dataset_augmentation(root_csv='scenario32.csv')
-		augmentation_set_33 = dataset_augmentation(root_csv='scenario33.csv')
-		augmentation_set = ConcatDataset([augmentation_set_31, augmentation_set_32, augmentation_set_33])
+			# augmentation_set = augmentation_set_31
 
-		# augmentation_set = augmentation_set_31
+			development_set = ConcatDataset([development_set, augmentation_set])
 
-		development_set = ConcatDataset([development_set, augmentation_set])
-
-	train_set = ConcatDataset([development_set, adaptation_set])
-	# val_set = adaptation_set
-	train_size = int(0.9*len(train_set))
-	train_set, val_set = torch.utils.data.random_split(train_set, [train_size, len(train_set) - train_size])
-	print('train_set:', len(train_set), 'val_set:', len(val_set))
+		train_set = ConcatDataset([development_set, adaptation_set])
+		# val_set = adaptation_set
+		train_size = int(0.9*len(train_set))
+		train_set, val_set = torch.utils.data.random_split(train_set, [train_size, len(train_set) - train_size])
+		print('train_set:', len(train_set), 'val_set:', len(val_set))
 
 if args.Test:
+	# test_root=data_root+'/MultiModeBeamforming/Multi_Modal_Test/'
+	test_root = data_root + '/Multi_Modal_Test/'
+	# test_root='/efs/data/Multi_Modal_Test/'
+	test_root_csv = 'ml_challenge_test_multi_modal.csv'
 	test_set = CARLA_Data(root=test_root, root_csv=test_root_csv, config=config, test=True)
 	print('test_set:', len(test_set))
 	dataloader_test = DataLoader(test_set, batch_size=args.batch_size, shuffle=False, num_workers=8, pin_memory=False)
@@ -638,40 +600,11 @@ else:
 	dataloader_val = DataLoader(val_set, batch_size=args.batch_size, shuffle=False, num_workers=8, pin_memory=False)
 
 
-# # For testing small dataset
-# train_set, _ = torch.utils.data.random_split(train_set, [100, len(train_set) - 100])
-
-
-# val_set = adaptation_set
-
-
-
-# train_size = int(0.01 * len(train_set))
-# train_set, _= torch.utils.data.random_split(train_set, [train_size, len(train_set) - train_size])
-
-
-# val_size = len(val_set)
-#
-# print('train_set:', train_size,'val_set:', val_size, 'test_set:', len(test_set))
-
-
-
 # Model
 model = TransFuser(config, args.device)
-# model = torch.nn.DataParallel(model, device_ids = [2, 3])
 model = torch.nn.DataParallel(model)
-# if args.finetune:
-# 	if isinstance(model, torch.nn.DataParallel):
-# 		for param in model.module.encoder.parameters():
-# 			param.requires_grad = False
-# 	else:
-# 		for param in model.encoder.parameters():
-# 			param.requires_grad = False
-# 	optimizer = optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=args.lr)
-# else:
 optimizer = optim.AdamW(model.parameters(), lr=args.lr)
 if args.scheduler:
-	# scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
 	scheduler = CyclicCosineDecayLR(optimizer,
 	                                init_decay_epochs=15,
 	                                min_decay_lr=2.5e-6,
@@ -681,7 +614,6 @@ if args.scheduler:
 	                                warmup_start_lr=2.5e-6)
 trainer = Engine()
 model_parameters = filter(lambda p: p.requires_grad, model.parameters())
-# print([p.requires_grad for p in model_parameters])
 params = sum([np.prod(p.size()) for p in model_parameters])
 print ('======Total trainable parameters: ', params)
 
@@ -715,16 +647,10 @@ elif os.path.isfile(os.path.join(args.logdir, 'recent.log')):
 		else:
 			print('======loading '+kw+' model')
 			model.load_state_dict(torch.load(os.path.join(args.logdir, kw+'model.pth')))
-			# optimizer.load_state_dict(torch.load(os.path.join(args.logdir, kw+'optim.pth')))
 	else:
 		print('======loading best_model')
 		model.load_state_dict(torch.load(os.path.join(args.logdir, 'best_model.pth')))
 
-
-
-	# trainer.validate()
-	# 	# test
-	# sys.exit()
 
 ema = EMA(model, 0.999)
 
@@ -752,15 +678,3 @@ else:
 		if args.scheduler:
 			print('lr', scheduler.get_lr())
 			scheduler.step()
-
-
-
-	# torch.save(model.state_dict(), os.path.join(args.logdir, 'current_model.pth'))
-	# torch.save(optimizer.state_dict(), os.path.join(args.logdir, 'current_optim.pth'))
-
-
-	# if epoch % args.val_every == 0:
-	# 	trainer.validate()
-	# 	trainer.save()
-
-
