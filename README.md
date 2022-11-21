@@ -27,8 +27,9 @@ def minmax(arr):
     return (arr - arr.min()) / (arr.max() - arr.min())
 ```
 ### Data Augmentation
-1. Camera
-2. flip
+We utilize two data augmentations here: adaptation and flip
+1. Augment the adaptation dataset. If setting the argument '--augmentation=1', data augmentation will be activated. 
+2. horizontally flip the camera, ladar, radar, and GPS data: If '--flip=1', the 
 ## Train
 ## Test
 ### Pretrained model
