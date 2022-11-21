@@ -149,9 +149,7 @@ class GPT(nn.Module):
 
         # positional embedding parameter (learnable), image + lidar
         self.pos_emb = nn.Parameter(torch.zeros(1, (self.config.n_views + 2) * seq_len * vert_anchors * horz_anchors+2, n_embd))
-        
-        # # velocity embedding
-        # self.vel_emb = nn.Linear(2, n_embd)
+
         self.drop = nn.Dropout(embd_pdrop)
 
         # transformer
@@ -209,12 +207,12 @@ class GPT(nn.Module):
 
         return optim_groups
 
-    def forward(self, image_tensor, lidar_tensor, radar_tensor, velocity):
+    def forward(self, image_tensor, lidar_tensor, radar_tensor, gps):
         """
         Args:
             image_tensor (tensor): B*4*seq_len, C, H, W
             lidar_tensor (tensor): B*seq_len, C, H, W
-            velocity (tensor): ego-velocity
+            gps (tensor): ego-gps
         """
         
         bz = lidar_tensor.shape[0] // self.seq_len
@@ -231,16 +229,8 @@ class GPT(nn.Module):
         token_embeddings = torch.cat([image_tensor, lidar_tensor, radar_tensor], dim=1).permute(0,1,3,4,2).contiguous()
         # print(token_embeddings.shape)
         token_embeddings = token_embeddings.view(bz, -1, self.n_embd) # (B, an * T, C)
-        # print(token_embeddings.shape)
-        # project velocity to n_embed
-        # velocity_embeddings = self.vel_emb(velocity.unsqueeze(1)) # (B, C)
-
-        # velocity_embeddings = self.vel_emb(velocity)  # (B, C)
-        # print(velocity_embeddings.shape) 
-        token_embeddings = torch.cat([token_embeddings,velocity], dim=1)
-        # add (learnable) positional embedding and velocity embedding for all tokens
-        # x = self.drop(self.pos_emb + token_embeddings + velocity_embeddings.unsqueeze(1)) # (B, an * T, C)
-        # x = self.drop(self.pos_emb + token_embeddings + velocity_embeddings)  # (B, an * T, C)
+        token_embeddings = torch.cat([token_embeddings,gps], dim=1)
+        # add (learnable) positional embedding and gps embedding for all tokens
         x = self.drop(self.pos_emb + token_embeddings )  # (B, an * T, C)
         x = self.blocks(x) # (B, an * T, C)
         x = self.ln_f(x) # (B, an * T, C)
@@ -326,13 +316,13 @@ class Encoder(nn.Module):
                             config=config)
 
         
-    def forward(self, image_list, lidar_list, radar_list, velocity):
+    def forward(self, image_list, lidar_list, radar_list, gps):
         '''
         Image + LiDAR feature fusion using transformers
         Args:
             image_list (list): list of input images
             lidar_list (list): list of input LiDAR BEV
-            velocity (tensor): input velocity from speedometer => chagned to GPS location
+            gps (tensor): input gps
         '''
         if self.image_encoder.normalize:
             image_list = [normalize_imagenet(image_input) for image_input in image_list]
@@ -371,9 +361,9 @@ class Encoder(nn.Module):
         image_embd_layer1 = self.avgpool(image_features)
         lidar_embd_layer1 = self.avgpool(lidar_features)
         radar_embd_layer1 = self.avgpool(radar_features)
-        vel_embd_layer1 = self.vel_emb1(velocity)
+        gps_embd_layer1 = self.vel_emb1(gps)
         
-        image_features_layer1, lidar_features_layer1, radar_features_layer1, vel_features_layer1 = self.transformer1(image_embd_layer1, lidar_embd_layer1, radar_embd_layer1, vel_embd_layer1)
+        image_features_layer1, lidar_features_layer1, radar_features_layer1, gps_features_layer1 = self.transformer1(image_embd_layer1, lidar_embd_layer1, radar_embd_layer1, gps_embd_layer1)
         image_features_layer1 = F.interpolate(image_features_layer1, scale_factor=8, mode='bilinear')
         lidar_features_layer1 = F.interpolate(lidar_features_layer1, scale_factor=8, mode='bilinear')
         radar_features_layer1 = F.interpolate(radar_features_layer1, scale_factor=8, mode='bilinear')
@@ -389,9 +379,9 @@ class Encoder(nn.Module):
         image_embd_layer2 = self.avgpool(image_features)
         lidar_embd_layer2 = self.avgpool(lidar_features)
         radar_embd_layer2 = self.avgpool(radar_features)
-        vel_embd_layer2 = self.vel_emb2(vel_features_layer1)
+        gps_embd_layer2 = self.vel_emb2(gps_features_layer1)
 
-        image_features_layer2, lidar_features_layer2, radar_features_layer2, vel_features_layer2 = self.transformer2(image_embd_layer2, lidar_embd_layer2, radar_embd_layer2, vel_embd_layer2)
+        image_features_layer2, lidar_features_layer2, radar_features_layer2, gps_features_layer2 = self.transformer2(image_embd_layer2, lidar_embd_layer2, radar_embd_layer2, gps_embd_layer2)
         image_features_layer2 = F.interpolate(image_features_layer2, scale_factor=4, mode='bilinear')
         lidar_features_layer2 = F.interpolate(lidar_features_layer2, scale_factor=4, mode='bilinear')
         radar_features_layer2 = F.interpolate(radar_features_layer2, scale_factor=4, mode='bilinear')
@@ -408,9 +398,9 @@ class Encoder(nn.Module):
         image_embd_layer3 = self.avgpool(image_features)
         lidar_embd_layer3 = self.avgpool(lidar_features)
         radar_embd_layer3 = self.avgpool(radar_features)
-        vel_embd_layer3 = self.vel_emb3(vel_features_layer2)
+        gps_embd_layer3 = self.vel_emb3(gps_features_layer2)
 
-        image_features_layer3, lidar_features_layer3, radar_features_layer3, vel_features_layer3 = self.transformer3(image_embd_layer3, lidar_embd_layer3, radar_embd_layer3, vel_embd_layer3)
+        image_features_layer3, lidar_features_layer3, radar_features_layer3, gps_features_layer3 = self.transformer3(image_embd_layer3, lidar_embd_layer3, radar_embd_layer3, gps_embd_layer3)
         
         image_features_layer3 = F.interpolate(image_features_layer3, scale_factor=2, mode='bilinear')
         lidar_features_layer3 = F.interpolate(lidar_features_layer3, scale_factor=2, mode='bilinear')
@@ -428,9 +418,9 @@ class Encoder(nn.Module):
         image_embd_layer4 = self.avgpool(image_features)
         lidar_embd_layer4 = self.avgpool(lidar_features)
         radar_embd_layer4 = self.avgpool(radar_features)
-        vel_embd_layer4 = self.vel_emb4(vel_features_layer3)
+        gps_embd_layer4 = self.vel_emb4(gps_features_layer3)
 
-        image_features_layer4, lidar_features_layer4, radar_features_layer4, vel_features_layer4 = self.transformer4(image_embd_layer4, lidar_embd_layer4, radar_embd_layer4, vel_embd_layer4)
+        image_features_layer4, lidar_features_layer4, radar_features_layer4, gps_features_layer4 = self.transformer4(image_embd_layer4, lidar_embd_layer4, radar_embd_layer4, gps_embd_layer4)
         image_features = image_features + image_features_layer4
         lidar_features = lidar_features + lidar_features_layer4
         radar_features = radar_features + radar_features_layer4
@@ -444,39 +434,14 @@ class Encoder(nn.Module):
         radar_features = self.radar_encoder._model.avgpool(radar_features)
         radar_features = torch.flatten(radar_features, 1)
         radar_features = radar_features.view(bz, self.config.seq_len, -1)
-        vel_features = vel_features_layer4
+        gps_features = gps_features_layer4
 
-        fused_features = torch.cat([image_features, lidar_features, radar_features, vel_features], dim=1)
+        fused_features = torch.cat([image_features, lidar_features, radar_features, gps_features], dim=1)
         # fused_features = torch.cat([image_features, lidar_features, radar_features], dim=1)
 
         fused_features = torch.sum(fused_features, dim=1)
 
         return fused_features
-
-
-class PIDController(object):
-    def __init__(self, K_P=1.0, K_I=0.0, K_D=0.0, n=20):
-        self._K_P = K_P
-        self._K_I = K_I
-        self._K_D = K_D
-
-        self._window = deque([0 for _ in range(n)], maxlen=n)
-        self._max = 0.0
-        self._min = 0.0
-
-    def step(self, error):
-        self._window.append(error)
-        self._max = max(self._max, abs(error))
-        self._min = -abs(self._max)
-
-        if len(self._window) >= 2:
-            integral = np.mean(self._window)
-            derivative = (self._window[-1] - self._window[-2])
-        else:
-            integral = 0.0
-            derivative = 0.0
-
-        return self._K_P * error + self._K_I * integral + self._K_D * derivative
 
 
 class TransFuser(nn.Module):
@@ -489,10 +454,6 @@ class TransFuser(nn.Module):
         self.device = device
         self.config = config
         self.pred_len = config.pred_len
-
-        self.turn_controller = PIDController(K_P=config.turn_KP, K_I=config.turn_KI, K_D=config.turn_KD, n=config.turn_n)
-        self.speed_controller = PIDController(K_P=config.speed_KP, K_I=config.speed_KI, K_D=config.speed_KD, n=config.speed_n)
-
         self.encoder = Encoder(config).to(self.device)
 
         self.join = nn.Sequential(
@@ -505,16 +466,16 @@ class TransFuser(nn.Module):
         # self.decoder = nn.GRUCell(input_size=2, hidden_size=64).to(self.device)
         # self.output = nn.Linear(64, 2).to(self.device)
         
-    def forward(self, image_list, lidar_list, radar_list, velocity):
+    def forward(self, image_list, lidar_list, radar_list, gps):
         '''
         Predicts waypoint from geometric feature projections of image + LiDAR input
         Args:
             image_list (list): list of input images
             lidar_list (list): list of input LiDAR BEV
             target_point (tensor): goal location registered to ego-frame
-            velocity (tensor): input velocity from speedometer
+            gps (tensor): input gps
         '''
-        fused_features = self.encoder(image_list, lidar_list, radar_list, velocity)
+        fused_features = self.encoder(image_list, lidar_list, radar_list, gps)
         z = self.join(fused_features)
 
        

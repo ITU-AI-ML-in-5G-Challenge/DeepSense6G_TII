@@ -2,8 +2,6 @@ import argparse
 import json
 import os, sys
 import csv
-# os.environ["CUDA_VISIBLE_DEVICES"] = "0, 1, 2, 3"
-
 
 from tqdm import tqdm
 import pandas as pd
@@ -13,7 +11,6 @@ import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader, ConcatDataset
 from torch.utils.tensorboard import SummaryWriter
-import torch.nn.functional as F
 import torch.nn as nn
 torch.backends.cudnn.benchmark = True
 from scheduler import CyclicCosineDecayLR
@@ -22,7 +19,6 @@ from config_seq import GlobalConfig
 from model2_seq import TransFuser
 from data2_seq import CARLA_Data
 
-import matplotlib.pyplot as plt
 import torchvision
 
 kw='final_'# keyword for the pretrained model in finetune
@@ -37,9 +33,9 @@ parser.add_argument('--lr', type=float, default=5e-4, help='Learning rate.')
 parser.add_argument('--batch_size', type=int, default=6, help='Batch size')	# default=24
 parser.add_argument('--logdir', type=str, default='log', help='Directory to log data to.')	# /ibex/scratch/tiany0c/log
 parser.add_argument('--add_velocity', type = int, default=1, help='concatenate velocity map with angle map')
-parser.add_argument('--add_mask', type=int, default=1, help='add mask to the camera data')
-parser.add_argument('--enhanced', type=int, default=0, help='use enhanced camera data')
-parser.add_argument('--filtered', type=int, default=1, help='use filtered lidar data')
+parser.add_argument('--add_mask', type=int, default=0, help='add mask to the camera data')
+parser.add_argument('--enhanced', type=int, default=1, help='use enhanced camera data')
+parser.add_argument('--filtered', type=int, default=0, help='use filtered lidar data')
 parser.add_argument('--loss', type=str, default='focal', help='crossentropy or focal loss')
 parser.add_argument('--scheduler', type=int, default=1, help='use scheduler to control the learning rate')
 parser.add_argument('--load_previous_best', type=int, default=0, help='load previous best pretrained model ')
