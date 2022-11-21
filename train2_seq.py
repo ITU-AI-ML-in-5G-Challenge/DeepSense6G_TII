@@ -36,9 +36,9 @@ parser.add_argument('--lr', type=float, default=5e-4, help='Learning rate.')
 parser.add_argument('--batch_size', type=int, default=6, help='Batch size')	# default=24
 parser.add_argument('--logdir', type=str, default='log', help='Directory to log data to.')	# /ibex/scratch/tiany0c/log
 parser.add_argument('--add_velocity', type = int, default=1, help='concatenate velocity map with angle map')
-parser.add_argument('--add_mask', type=int, default=0, help='add mask to the camera data')
-parser.add_argument('--enhanced', type=int, default=1, help='use enhanced camera data')
-parser.add_argument('--filtered', type=int, default=0, help='use filtered lidar data')
+parser.add_argument('--add_mask', type=int, default=1, help='add mask to the camera data')
+parser.add_argument('--enhanced', type=int, default=0, help='use enhanced camera data')
+parser.add_argument('--filtered', type=int, default=1, help='use filtered lidar data')
 parser.add_argument('--loss', type=str, default='focal', help='crossentropy or focal loss')
 parser.add_argument('--scheduler', type=int, default=1, help='use scheduler to control the learning rate')
 parser.add_argument('--load_previous_best', type=int, default=0, help='load previous best pretrained model ')
@@ -49,9 +49,9 @@ parser.add_argument('--Test', type=int, default=0, help='Test')
 parser.add_argument('--augmentation', type=int, default=1, help='data augmentation of camera and lidar')
 parser.add_argument('--angle_norm', type=int, default=1, help='normlize the gps loc with unit, angle can be obtained')
 parser.add_argument('--custom_FoV_lidar', type=int, default=1, help='Custom FoV of lidar')
-parser.add_argument('--add_mask_seg', type=int, default=0, help='add mask and seg on 31&32 images')
+parser.add_argument('--add_seg', type=int, default=0, help='add segmentation on 31&32 images')
 parser.add_argument('--ema', type=int, default=0, help='exponential moving average')
-parser.add_argument('--flip', type=int, default=0, help='flip all the data to augmentation')
+parser.add_argument('--flip', type=int, default=1, help='flip all the data to augmentation')
 args = parser.parse_args()
 args.logdir = os.path.join(args.logdir, args.id)
 
@@ -461,8 +461,8 @@ config.add_mask = args.add_mask
 config.enhanced = args.enhanced
 config.angle_norm = args.angle_norm
 config.custom_FoV_lidar=args.custom_FoV_lidar
-config.add_mask_seg = args.add_mask_seg
 config.filtered = args.filtered
+config.add_seg = args.add_seg
 
 
 import random
