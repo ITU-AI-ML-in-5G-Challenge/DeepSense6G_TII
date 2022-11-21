@@ -25,7 +25,8 @@ from data2_seq import CARLA_Data
 import matplotlib.pyplot as plt
 import torchvision
 
-kw='final_'
+kw='final_'# keyword for the pretrained model in finetune
+data_root = './MultiModeBeamforming/'#path to the dataset
 torch.cuda.empty_cache()
 
 parser = argparse.ArgumentParser()
@@ -51,13 +52,11 @@ parser.add_argument('--angle_norm', type=int, default=1, help='normlize the gps 
 parser.add_argument('--custom_FoV_lidar', type=int, default=1, help='Custom FoV of lidar')
 parser.add_argument('--add_seg', type=int, default=0, help='add segmentation on 31&32 images')
 parser.add_argument('--ema', type=int, default=0, help='exponential moving average')
-parser.add_argument('--flip', type=int, default=1, help='flip all the data to augmentation')
+parser.add_argument('--flip', type=int, default=0, help='flip all the data to augmentation')
 args = parser.parse_args()
 args.logdir = os.path.join(args.logdir, args.id)
 
 writer = SummaryWriter(log_dir=args.logdir)
-# class_weights=[174.109375, 3.28508255, 2.20391614, 2.48727679, 2.00125718, 0.90212111, 1.33930288, 1.29932369, 1.85222739, 0.52128555, 0.61960632, 1.27087135, 0.5440918,0.80981105, 1.48811432, 0.32912925, 0.28127524, 1.51399457, 0.61960632, 0.32850825, 0.5260102,0.20876424, 0.69366285, 3.28508255, 1.20909288, 0.58425965, 1.31901042, 0.76700165, 0.56713151, 1.40410786, 1.16072917, 1.19252997, 0.59626498, 0.57085041, 4.35273437, 0.84519114, 0.60037716, 0.59020127, 0.40117368, 1.52727522, 1.37093996, 0.47701199, 0.633125, 0.99491071, 1.64254127, 2.85425205, 2.80821573, 2.20391614, 3.05455044, 5.61643145, 1.65818452, 8.29092262, 4.97455357, 1.77662628, 2.26116071, 5.61643145, 5.27604167, 9.16365132, 5.27604167,10.88183594,12.43638393, 9.16365132,29.01822917, 29.01822917]
-# class_weights=torch.tensor(class_weights,dtype=torch.float).cuda()
 class Engine(object):
 	"""Engine that runs training and inference.
 	Args
@@ -66,7 +65,6 @@ class Engine(object):
 		- validate_every (int): How frequently (# epochs) to run validation.
 		
 	"""
-
 	def __init__(self,  cur_epoch=0, cur_iter=0):
 		self.cur_epoch = cur_epoch
 		self.cur_iter = cur_iter
@@ -77,14 +75,10 @@ class Engine(object):
 		self.bestval = 0
 		if args.finetune:
 			self.DBAft = [0]
-		# self.criterion = torch.nn.CrossEntropyLoss(weight=class_weights,reduction='mean')
-		# self.criterion = torch.nn.CrossEntropyLoss( reduction='mean')
-
-		if args.loss == 'ce':
+		if args.loss == 'ce':#crossentropy loss
 			self.criterion = torch.nn.CrossEntropyLoss(reduction='mean')
-		elif args.loss == 'focal':
-			# self.criterion =  FocalLoss(gamma= 2)
-			self.criterion = FocalLoss1()
+		elif args.loss == 'focal':#focal loss
+			self.criterion = FocalLoss()
 
 	def train(self):
 		loss_epoch = 0.
@@ -93,16 +87,12 @@ class Engine(object):
 		running_acc = 0.0
 		gt_beam_all = []
 		pred_beam_all = []
-
 		# Train loop
 		pbar=tqdm(dataloader_train, desc='description')
 		for data in pbar:
-			
+
 			# efficiently zero gradients
-			# for p in model.parameters():
-			# 	p.grad = None
 			optimizer.zero_grad(set_to_none=True)
-			
 			# create batch and move to GPU
 			fronts = []
 			lidars = []
@@ -113,46 +103,35 @@ class Engine(object):
 				fronts.append(data['fronts'][i].to(args.device, dtype=torch.float32))
 				lidars.append(data['lidars'][i].to(args.device, dtype=torch.float32))
 				radars.append(data['radars'][i].to(args.device, dtype=torch.float32))
-
 			pred_beams = model(fronts, lidars, radars, gps)
-
 			gt_beamidx = data['beamidx'][0].to(args.device, dtype=torch.long)
 			gt_beams = data['beam'][0].to(args.device, dtype=torch.float32)
-
 			running_acc += (torch.argmax(pred_beams, dim=1) == gt_beamidx).sum().item()
-
-			if args.temp_coef:
+			if args.temp_coef:#temperature coefficiece
 				loss = self.criterion(pred_beams, gt_beams)
 			else:
 				loss = self.criterion(pred_beams, gt_beamidx)
-
 			gt_beam_all.append(data['beamidx'][0])
-
 			pred_beam_all.append(torch.argsort(pred_beams, dim=1, descending=True).cpu().numpy())
-
 			loss.backward()
 			loss_epoch += float(loss.item())
 			pbar.set_description(str(loss.item()))
 			num_batches += 1
 			optimizer.step()
 
-			if args.ema:
+			if args.ema:# Exponential Moving Averages
 				ema.update()	# during training, after update parameters, update shadow weights
 
 			self.cur_iter += 1
 		pred_beam_all = np.squeeze(np.concatenate(pred_beam_all, 0))
-
 		gt_beam_all = np.squeeze(np.concatenate(gt_beam_all, 0))
-
 		curr_acc = compute_acc(pred_beam_all, gt_beam_all, top_k=[1, 2, 3])
 		DBA = compute_DBA_score(pred_beam_all, gt_beam_all, max_k=3, delta=5)
 		print('Train top beam acc: ',curr_acc, ' DBA score: ',DBA)
 		loss_epoch = loss_epoch / num_batches
 		self.train_loss.append(loss_epoch)
 		self.cur_epoch += 1
-
 		writer.add_scalar('DBA_score_train', DBA, self.cur_epoch)
-
 		for i in range(len(curr_acc)):
 			writer.add_scalars('curr_acc_train', {'beam' + str(i):curr_acc[i]}, self.cur_epoch)
 		writer.add_scalar('curr_loss_train', loss_epoch, self.cur_epoch)
@@ -165,23 +144,17 @@ class Engine(object):
 			else:
 				print('best',self.DBAft[-1])
 
-
 	def validate(self):
-
-		if args.ema:
+		if args.ema:#Exponential Moving Averages
 			ema.apply_shadow()    # before eval，apply shadow weights
-
 		model.eval()
 		running_acc = 0.0
-
 		with torch.no_grad():	
 			num_batches = 0
 			wp_epoch = 0.
 			gt_beam_all=[]
 			pred_beam_all=[]
-
 			scenario_all = []
-
 			# Validation loop
 			for batch_num, data in enumerate(tqdm(dataloader_val), 0):
 				# create batch and move to GPU
@@ -189,7 +162,6 @@ class Engine(object):
 				lidars = []
 				radars = []
 				gps = data['gps'].to(args.device, dtype=torch.float32)
-
 				for i in range(config.seq_len):
 					fronts.append(data['fronts'][i].to(args.device, dtype=torch.float32))
 					lidars.append(data['lidars'][i].to(args.device, dtype=torch.float32))
@@ -201,20 +173,17 @@ class Engine(object):
 				gt_beamidx = data['beamidx'][0].to(args.device, dtype=torch.long)
 				pred_beam_all.append(torch.argsort(pred_beams, dim=1, descending=True).cpu().numpy())
 				running_acc += (torch.argmax(pred_beams, dim=1) == gt_beamidx).sum().item()
-
 				if args.temp_coef:
 					loss = self.criterion(pred_beams, gt_beams)
 				else:
 					loss = self.criterion(pred_beams, gt_beamidx)
-
 				wp_epoch += float(loss.item())
 				num_batches += 1
 				scenario_all.append(data['scenario'])
-
 			pred_beam_all=np.squeeze(np.concatenate(pred_beam_all,0))
 			gt_beam_all=np.squeeze(np.concatenate(gt_beam_all,0))
 			scenario_all = np.squeeze(np.concatenate(scenario_all,0))
-
+			#calculate accuracy and DBA score according to different scenarios
 			scenarios = ['scenario31', 'scenario32', 'scenario33', 'scenario34']
 			for s in scenarios:
 				beam_scenario_index = np.array(scenario_all) == s
@@ -222,7 +191,6 @@ class Engine(object):
 					curr_acc_s = compute_acc(pred_beam_all[beam_scenario_index], gt_beam_all[beam_scenario_index], top_k=[1,2,3])
 					DBA_score_s = compute_DBA_score(pred_beam_all[beam_scenario_index], gt_beam_all[beam_scenario_index], max_k=3, delta=5)
 					print(s, ' curr_acc: ', curr_acc_s, ' DBA_score: ', DBA_score_s)
-
 					for i in range(len(curr_acc_s)):
 						writer.add_scalars('curr_acc_val', {s + 'beam' + str(i):curr_acc_s[i]}, self.cur_epoch)
 					writer.add_scalars('DBA_score_val', {s:DBA_score_s}, self.cur_epoch)
@@ -238,7 +206,7 @@ class Engine(object):
 			self.val_loss.append(wp_loss)
 			self.DBA.append(DBA_score_val)
 
-		if args.ema:
+		if args.ema:#Exponential Moving Averages
 			ema.restore()	# after eval, restore model parameter
 
 
@@ -260,9 +228,7 @@ class Engine(object):
 					lidars.append(data['lidars'][i].to(args.device, dtype=torch.float32))
 					radars.append(data['radars'][i].to(args.device, dtype=torch.float32))
 
-				velocity = torch.zeros((data['fronts'][0].shape[0])).to(args.device, dtype=torch.float32)
 				pred_beams = model(fronts, lidars, radars, gps)
-				# pred_beams = model(fronts, lidars, radars, velocity)
 				pred_beam_all.append(torch.argsort(pred_beams, dim=1, descending=True).cpu().numpy())
 				sm=torch.nn.Softmax(dim=1)
 				beam_confidence=torch.max(sm(pred_beams), dim=1)
@@ -300,9 +266,9 @@ class Engine(object):
 		# # Log other data corresponding to the recent model
 		with open(os.path.join(args.logdir, 'recent.log'), 'w') as f:
 			f.write(json.dumps(log_table))
-		# tqdm.write('====== Saved recent model ======>')
 
-		if save_best:
+
+		if save_best:# save the bestpretrained model
 			torch.save(model.state_dict(), os.path.join(args.logdir, 'best_model.pth'))
 			torch.save(optimizer.state_dict(), os.path.join(args.logdir, 'best_optim.pth'))
 			tqdm.write('====== Overwrote best model ======>')
@@ -311,9 +277,9 @@ class Engine(object):
 			optimizer.load_state_dict(torch.load(os.path.join(args.logdir, 'best_optim.pth')))
 			tqdm.write('====== Load the previous best model ======>')
 
-class FocalLoss1(nn.Module):
+class FocalLoss(nn.Module):
 	def __init__(self, gamma=2, alpha=0.25):
-		super(FocalLoss1, self).__init__()
+		super(FocalLoss, self).__init__()
 		self.gamma = gamma
 		self.alpha = alpha
 	def __call__(self, input, target):
@@ -322,20 +288,6 @@ class FocalLoss1(nn.Module):
 		loss = torchvision.ops.sigmoid_focal_loss(input, target.float(), alpha=self.alpha, gamma=self.gamma,
 												  reduction='mean')
 		return loss
-
-class FocalLoss(torch.nn.modules.loss._WeightedLoss):
-    def __init__(self, weight=None, gamma=2):
-        super(FocalLoss, self).__init__(weight)
-        self.gamma = gamma
-        self.weight = weight #weight parameter will act as the alpha parameter to balance class weights
-
-    def forward(self, input, target):
-
-        ce_loss = F.cross_entropy(input, target,reduction='none',weight=self.weight) 
-        pt = torch.exp(-ce_loss)
-        focal_loss = ((1 - pt) ** self.gamma * ce_loss).mean()
-        return focal_loss
-
 
 class EMA():
     def __init__(self, model, decay):
@@ -432,25 +384,18 @@ def dataset_augmentation(root_csv):
 	camera_aug_num = 7
 	lidar_aug_num = 2
 	radar_aug_num = 1
-
 	augmentation_set = []
-
-
 	for i in range(0, camera_aug_num + 1):
 		for j in range(0, lidar_aug_num + 1):
 			for k in range(0, radar_aug_num + 1):
-
 				if i == 0 and j == 0 and k == 0:	# skip the original dataset
 					continue
-
 				augmentation_entry = CARLA_Data(root=val_root, root_csv=root_csv, config=config, test=False, augment={'camera':i, 'lidar':j, 'radar':k})
 				if augmentation_set == []:
 					augmentation_set = augmentation_entry
 				else:
 					augmentation_set = ConcatDataset([augmentation_set, augmentation_entry])
-
 	print('Augmented Dataset: ', root_csv, ' Samples: ', str(len(augmentation_set)))
-
 	return augmentation_set
 
 
@@ -463,7 +408,6 @@ config.angle_norm = args.angle_norm
 config.custom_FoV_lidar=args.custom_FoV_lidar
 config.filtered = args.filtered
 config.add_seg = args.add_seg
-
 
 import random
 import numpy
@@ -494,45 +438,18 @@ def createDataset(InputFile, OutputFile, Keyword):
 			except:
 				   continue
 
-# data_root='/home/tiany0c/Downloads'
-# data_root='.'
-# trainval_root=data_root+'/home/tiany0c/Downloads/MultiModeBeamforming/Multi_Modal/'
-
-data_root = './MultiModeBeamforming/'
-
-# data_root = '/efs/data'
-
 trainval_root=data_root+'/Multi_Modal/'
-
-
-# train_root_csv='ml_challenge_dev_multi_modal1.csv'
-# trainval_root= data_root+'/Adaptation_dataset_multi_modal/'
-
-# trainval_root= '/efs/data/Multi_Modal/'
-# train_root_csv='ml_challenge_dev_multi_modal1.csv'
-
 train_root_csv='ml_challenge_dev_multi_modal.csv'
 
 if not args.Test:
-# trainval_root='/efs/data/Adaptation_dataset_multi_modal/'
-# train_root_csv='ml_challenge_data_adaptation_multi_modal.csv'
 	for keywords in ['scenario32','scenario33','scenario34']:
 		createDataset(trainval_root+train_root_csv, trainval_root+keywords,keywords)
 		print(trainval_root+keywords)
-
-	# val_root=data_root+'/MultiModeBeamforming/Adaptation_dataset_multi_modal/'
 	val_root = data_root + '/Adaptation_dataset_multi_modal/'
-
-	# val_root='/efs/data/Adaptation_dataset_multi_modal/'
 	val_root_csv='ml_challenge_data_adaptation_multi_modal.csv'
 	for keywords in ['scenario31','scenario32','scenario33']:
 		createDataset(val_root+val_root_csv, val_root+keywords,keywords)
 		print(val_root + keywords)
-
-
-
-
-
 # Data
 if args.finetune and not args.Test:
 	adaptation_set = CARLA_Data(root=val_root, root_csv=val_root_csv, config=config,
@@ -569,27 +486,20 @@ if not args.Test:
 			adaptation_set = ConcatDataset([adaptation_set, adaptation_set_flip])
 		# add augmentation to develoment set
 		if args.augmentation:
-
 			print('====== Augmentation on adaptation dataset for scenario 31, 32, 33')
 			augmentation_set_31 = dataset_augmentation(root_csv='scenario31.csv')
 			augmentation_set_32 = dataset_augmentation(root_csv='scenario32.csv')
 			augmentation_set_33 = dataset_augmentation(root_csv='scenario33.csv')
 			augmentation_set = ConcatDataset([augmentation_set_31, augmentation_set_32, augmentation_set_33])
-
-			# augmentation_set = augmentation_set_31
-
 			development_set = ConcatDataset([development_set, augmentation_set])
 
 		train_set = ConcatDataset([development_set, adaptation_set])
-		# val_set = adaptation_set
 		train_size = int(0.9*len(train_set))
 		train_set, val_set = torch.utils.data.random_split(train_set, [train_size, len(train_set) - train_size])
 		print('train_set:', len(train_set), 'val_set:', len(val_set))
 
 if args.Test:
-	# test_root=data_root+'/MultiModeBeamforming/Multi_Modal_Test/'
 	test_root = data_root + '/Multi_Modal_Test/'
-	# test_root='/efs/data/Multi_Modal_Test/'
 	test_root_csv = 'ml_challenge_test_multi_modal.csv'
 	test_set = CARLA_Data(root=test_root, root_csv=test_root_csv, config=config, test=True)
 	print('test_set:', len(test_set))
@@ -604,7 +514,7 @@ else:
 model = TransFuser(config, args.device)
 model = torch.nn.DataParallel(model)
 optimizer = optim.AdamW(model.parameters(), lr=args.lr)
-if args.scheduler:
+if args.scheduler:#Cyclic Cosine Decay Learning Rate
 	scheduler = CyclicCosineDecayLR(optimizer,
 	                                init_decay_epochs=15,
 	                                min_decay_lr=2.5e-6,
@@ -638,7 +548,7 @@ elif os.path.isfile(os.path.join(args.logdir, 'recent.log')):
 	# # FOR TESTING ONLY
 
 	# Load checkpoint
-	if args.finetune:
+	if args.finetune:# finetune the pretrained model
 
 		if os.path.exists(os.path.join(args.logdir, 'all_finetune_on_'+ kw + 'model.pth')):
 			print('======loading last'+'all_finetune_on_'+ kw + 'model.pth')
@@ -657,7 +567,6 @@ ema = EMA(model, 0.999)
 if args.ema:
 	ema.register()
 
-
 # Log args
 with open(os.path.join(args.logdir, 'args.txt'), 'w') as f:
 	json.dump(args.__dict__, f, indent=2)
@@ -666,12 +575,8 @@ if args.Test:
 	print('Test finish')
 else:
 	for epoch in range(trainer.cur_epoch, args.epochs):
-
 		print('epoch:',epoch)
 		trainer.train()
-		# for param in model.parameters():
-		# 	print(param.requires_grad)
-
 		if not args.finetune:
 			trainer.validate()
 			trainer.save()
