@@ -28,7 +28,7 @@ In the challenge, we have achieved the best overall DBA score of 0.6671. The sco
 |---|---|---|---|---|
 |0.5331|0.7173|0.7910|0.8209|0.6671|
 
-The pretrained model of this score can be downloaded from [](). Then save it in the fold './DeepSense6G_TII/log/test'
+The pretrained model of this score can be downloaded from [here](https://tiiuae-my.sharepoint.com/:u:/g/personal/yu_tian_tii_ae/ESWmKoHeKsxJorYTr6MxgjQBlCXrRQoSrgLDxs7ljxEr_g?e=bPrCgS). Then save it in the fold './DeepSense6G_TII/log/test'
 
 To evaluate the pretrained model, please run the following script
 '''
