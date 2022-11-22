@@ -8,7 +8,7 @@ The repository contains the code for the solution of team TII in ['Multi Modal B
 ## Setup
 Clone the repo and build the conda environment:
 ```
-git clone 
+git clone https://github.com/DeepSenseChallengeTeam/DeepSense6G_TII.git
 conda env create -f environment.yml 
 conda activate tfuse 
 ```
@@ -19,7 +19,7 @@ As we have generated many preprocessed data inlcuding segmented, masked, enhance
 The code for training is provide in (XXXX).
 To train the model, please run the following script in the terminal
 ```
-python3 train2_seq.py --id test --logdir log --device cuda --epochs 150 --lr 1e-4 --batch_size 12 --add_velocity 1 --add_mask 0 --enhanced 1 --filtered 0 --loss focal --scheduler 1 --load_previous_best 0 --temp_coef 1 
+python3 train2_seq.py --id test --logdir log --device cuda --epochs 150 --lr 1e-4 --batch_size 12 --add_velocity 1 --add_mask 0 --enhanced 1 --filtered 0 --loss focal --scheduler 1 --load_previous_best 0 --temp_coef 1 --train_adapt_together 1 --finetune 0 --Test 0 --augmentation 1 --angle_norm 1 --custom_FoV_lidar 1 --add_seg 0 --ema 1 --flip 0
 ```
 
 In the challenge, we have achieved the best overall DBA score of 0.6671. The scores corresponding to different scenarios are listed in the table below
@@ -28,11 +28,11 @@ In the challenge, we have achieved the best overall DBA score of 0.6671. The sco
 |---|---|---|---|---|
 |0.5331|0.7173|0.7910|0.8209|0.6671|
 
-The pretrained model of this score can be downloaded from [](). Then save it in the fold './DeepSense6G_TII/log/'
+The pretrained model of this score can be downloaded from [](). Then save it in the fold './DeepSense6G_TII/log/test'
 
 To evaluate the pretrained model, please run the following script
 '''
-python3 train2_seq.py --Test 1 --filtered 0
+python3 train2_seq.py --id test --logdir log --Test 1 --add_velocity 1 --add_mask 0 --enhanced 1 --filtered 0 --angle_norm 1 --custom_FoV_lidar 1 --add_seg 0
 '''
 
 ## Future work
