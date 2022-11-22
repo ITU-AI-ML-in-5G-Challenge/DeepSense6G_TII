@@ -1,4 +1,5 @@
 # DeepSense6G_TII
+The repo is the deep-learning-based framework of team TII for ['Multi Modal Beam Prediction Challenge 2022: Towards Generalization'](https://deepsense6g.net/multi-modal-beam-prediction-challenge/). 
 ## Dataset
 ### Preprocessed data
 1. Camera data: 
@@ -28,7 +29,7 @@ def minmax(arr):
 ```
 ### Data Augmentation
 We utilize two data augmentations here: adaptation and flip
-1. Augment the adaptation dataset. If setting the argument '--augmentation=1', data augmentation will be activated. 
+1. Augment the adaptation dataset: randomly changing the brightness, contrast, gamma, hue, saturarion, sharpness, and blurring for the camera data; downsampling and adding noise to the Lidar points cloud; adding noise to the FFT coefficients in the spectral domain of the radar data. If setting the argument '--augmentation=1', data augmentation will be activated. 
 2. horizontally flip the camera, ladar, radar, and GPS data: If '--flip=1', the 
 ## Train
 ## Test
