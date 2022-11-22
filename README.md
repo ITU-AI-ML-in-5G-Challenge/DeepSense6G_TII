@@ -1,10 +1,10 @@
 # DeepSense6G_TII
 The repository contains the code for the solution of team TII in ['Multi Modal Beam Prediction Challenge 2022: Towards Generalization'](https://deepsense6g.net/multi-modal-beam-prediction-challenge/). 
 ## Contents
-1. Setup
-2. Dataset 
-3. Train and Evaluation
-4. Future work
+1. [Setup](#Setup)
+2. [Dataset](#Dataset)
+3. [Train and Evaluation](#Train-and-Evaluation)
+4. [Future work](#Future-work)
 ## Setup
 Clone the repo and build the conda environment:
 ```
