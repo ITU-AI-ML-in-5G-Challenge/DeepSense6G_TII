@@ -13,7 +13,7 @@ conda env create -f environment.yml
 conda activate tfuse 
 ```
 ## Dataset
-As we have generated many preprocessed data inlcuding segmented, masked, enhanced, and augumented, our dataset can be downloaded from [](). After downloading please put it in the folder of './DeepSense6G_TII/'.
+As we have generated many preprocessed data inlcuding segmented, masked, enhanced, and augumented, our dataset can be downloaded from [](). After downloading, please put it in the folder of './DeepSense6G_TII/'.
 
 ## Train and Evaluation
 The code for training is provide in [train2_seq.py](https://github.com/DeepSenseChallengeTeam/DeepSense6G_TII/blob/TransfuserLast/train2_seq.py).
@@ -36,7 +36,7 @@ python3 train2_seq.py --id test --logdir log --Test 1 --add_velocity 1 --add_mas
 '''
 
 ## Future work
-We develop other functions like finetune, fixmatch (semi-supervised learning) which can be used in other applciations. 
+We also develop other functions like finetune, fixmatch (semi-supervised learning) which can be used in other applciations. 
 
 
 
