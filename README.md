@@ -40,9 +40,7 @@ python3 train2_seq.py --id test --logdir log --Test 1 --add_velocity 1 --add_mas
 We also develop other functions like finetune, fixmatch (semi-supervised learning) which can be used in other applciations. 
 ## Reference
 1. [TransFuser](https://github.com/autonomousvision/transfuser)
-
 2. [MIRNet](https://github.com/swz30/MIRNet)
-
 3. [PIDNet](https://github.com/XuJiacong/PIDNet)
 
 
