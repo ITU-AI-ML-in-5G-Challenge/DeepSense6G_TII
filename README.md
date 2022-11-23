@@ -16,7 +16,7 @@ conda activate tfuse
 As we have generated many preprocessed data inlcuding segmented, masked, enhanced, and augumented, our dataset can be downloaded from [](). After downloading please put it in the folder of './DeepSense6G_TII/'.
 
 ## Train and Evaluation
-The code for training is provide in (XXXX).
+The code for training is provide in [train2_seq.py](https://github.com/DeepSenseChallengeTeam/DeepSense6G_TII/blob/TransfuserLast/train2_seq.py).
 To train the model, please run the following script in the terminal
 ```
 python3 train2_seq.py --id test --logdir log --device cuda --epochs 150 --lr 1e-4 --batch_size 12 --add_velocity 1 --add_mask 0 --enhanced 1 --filtered 0 --loss focal --scheduler 1 --load_previous_best 0 --temp_coef 1 --train_adapt_together 1 --finetune 0 --Test 0 --augmentation 1 --angle_norm 1 --custom_FoV_lidar 1 --add_seg 0 --ema 1 --flip 0
