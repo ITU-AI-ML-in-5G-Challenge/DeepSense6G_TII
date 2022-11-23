@@ -5,6 +5,7 @@ The repository contains the code for the solution of team TII in ['Multi Modal B
 2. [Dataset](#Dataset)
 3. [Train and Evaluation](#Train-and-Evaluation)
 4. [Future work](#Future-work)
+5. [Reference](#Reference)
 ## Setup
 Clone the repo and build the conda environment:
 ```
@@ -37,7 +38,12 @@ python3 train2_seq.py --id test --logdir log --Test 1 --add_velocity 1 --add_mas
 
 ## Future work
 We also develop other functions like finetune, fixmatch (semi-supervised learning) which can be used in other applciations. 
+## Reference
+1. [TransFuser](https://github.com/autonomousvision/transfuser)
 
+2. [MIRNet](https://github.com/swz30/MIRNet)
+
+3. [PIDNet](https://github.com/XuJiacong/PIDNet)
 
 
 
