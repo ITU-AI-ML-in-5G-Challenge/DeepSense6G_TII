@@ -263,13 +263,13 @@ def Normalize_loc(root, dataframe,angle_norm):
         angle = np.arctan(pos_input_normalized[..., 1] / pos_input_normalized[..., 0]) / np.pi * 180
         for sample_idx in tqdm(range(n_samples)):
             if 'scenario31' in pos_bs_abs_paths[sample_idx]:
-                angle[sample_idx] -= -40.94#-50.52
+                angle[sample_idx] -= -50.52#-40.94#
             if 'scenario32' in pos_bs_abs_paths[sample_idx]:
-                angle[sample_idx] -= 39.61#44.8
+                angle[sample_idx] -= 44.8#39.61#
             if 'scenario33' in pos_bs_abs_paths[sample_idx]:
-                angle[sample_idx] -= 47.85#55.6
+                angle[sample_idx] -= 55.6#47.85#
             if 'scenario34' in pos_bs_abs_paths[sample_idx]:
-                angle[sample_idx] -= -59.363#-60
+                angle[sample_idx] -= -60#-59.363#
         idx = angle > 90
         angle[idx] -= 180
         idx = angle < -90
