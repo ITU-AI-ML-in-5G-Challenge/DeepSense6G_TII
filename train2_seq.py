@@ -22,7 +22,8 @@ from data2_seq import CARLA_Data
 import torchvision
 
 kw='final_'# keyword for the pretrained model in finetune
-data_root = './MultiModeBeamforming/'#path to the dataset
+# data_root = './MultiModeBeamforming/'#path to the dataset
+
 torch.cuda.empty_cache()
 
 parser = argparse.ArgumentParser()
@@ -404,6 +405,7 @@ config.angle_norm = args.angle_norm
 config.custom_FoV_lidar=args.custom_FoV_lidar
 config.filtered = args.filtered
 config.add_seg = args.add_seg
+data_root = config.data_root	# path to the dataset
 
 import random
 import numpy
