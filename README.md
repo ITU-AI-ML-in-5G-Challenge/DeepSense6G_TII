@@ -14,7 +14,7 @@ conda env create -f environment.yml
 conda activate tfuse 
 ```
 ## Dataset
-As we have generated many preprocessed data inlcuding segmented, masked, enhanced, and augumented, our dataset can be downloaded from [](). After downloading, please put it in the folder of './DeepSense6G_TII/'.
+As we have generated many preprocessed data inlcuding segmented, masked, enhanced, and augumented, our dataset can be downloaded from [here](https://drive.google.com/drive/folders/1zvOOJpGodEnjqvAiAeXkzOdjWmz1semF?usp=sharing). After downloading, please put it in the folder of './DeepSense6G_TII/'.
 
 ## Train and Evaluation
 The code for training is provide in [train2_seq.py](https://github.com/DeepSenseChallengeTeam/DeepSense6G_TII/blob/TransfuserLast/train2_seq.py).
