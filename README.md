@@ -60,9 +60,7 @@ We are experimenting further approaches to improve the solutions such as semi-su
 
 Qiyang Zhao, Yu Tian, Zine el abidine Kherroubi, Fouzi Boukhalfa*
 
-Technology Innovation Institute, 9639 Masdar City, Abu Dhabi, United Arab Emirates
-
-Email: {qiyang.zhao, yu.tian, zine.kherroubi, fouzi.boukhalfa}@tii.ae
+{qiyang.zhao, yu.tian, zine.kherroubi, fouzi.boukhalfa}@tii.ae
 
 *The authors contributed equally to this work. 
 
