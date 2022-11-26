@@ -58,11 +58,9 @@ We are experimenting further approaches to improve the solutions such as semi-su
 
 ## Contact
 
-Qiyang Zhao, Yu Tian, Zine el abidine Kherroubi, Fouzi Boukhalfa*
-
-{qiyang.zhao, yu.tian, zine.kherroubi, fouzi.boukhalfa}@tii.ae
-
-*The authors contributed equally to this work. 
+* Qiyang Zhao, Yu Tian, Zine el abidine Kherroubi, Fouzi Boukhalfa
+* {qiyang.zhao, yu.tian, zine.kherroubi, fouzi.boukhalfa}@tii.ae
+* Team members contributed equally to this work. 
 
 ## Reference
 * [TransFuser](https://github.com/autonomousvision/transfuser): Imitation with Transformer-Based Sensor Fusion for Autonomous Driving
