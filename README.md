@@ -56,6 +56,16 @@ The best DBA score of each scenario on the test dataset is as follows:
 ## Future work
 We are experimenting further approaches to improve the solutions such as semi-supervised learning, batch former, fine tuning. We also plan to extend the framework for wider integrated sensing and communications. 
 
+## Contact
+
+Qiyang Zhao, Yu Tian, Zine el abidine Kherroubi, Fouzi Boukhalfa*
+
+Technology Innovation Institute, 9639 Masdar City, Abu Dhabi, United Arab Emirates
+
+Email: {qiyang.zhao, yu.tian, zine.kherroubi, fouzi.boukhalfa}@tii.ae
+
+*The authors contributed equally to this work. 
+
 ## Reference
 * [TransFuser](https://github.com/autonomousvision/transfuser): Imitation with Transformer-Based Sensor Fusion for Autonomous Driving
 * [MIRNet](https://github.com/swz30/MIRNet): Learning Enriched Features for Ream Image Resotration and Enhancement
