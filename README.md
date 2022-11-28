@@ -32,6 +32,7 @@ Create the environment:
 conda env create -f environment.yml 
 conda activate tfuse 
 ```
+
 ## Data Preprocessing
 We enhance and augment the multi-modal sensor data provided by the challenge. The final data necessary to reproduce our experiment can be downloaded directly from this link: [`MultiModalSensorPreprocessedData`](https://drive.google.com/drive/folders/1zvOOJpGodEnjqvAiAeXkzOdjWmz1semF?usp=sharing)
 
