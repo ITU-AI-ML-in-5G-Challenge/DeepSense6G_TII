@@ -1,10 +1,26 @@
 # DeepSense6G_TII
 The repository contains the code for the solution of Team TII for ITU AI/ML in 5G Grand Challenge 2022: [`ML5G-PS-011: Multi Modal Beam Prediction: Towards Generalization`](https://deepsense6g.net/multi-modal-beam-prediction-challenge/) 
+## Problem Statement
+As shown in Fig. 1, at any time instant t, a sequence of 5 samples (current and previously observed sensing data, i.e., [t-4, …, t]) is provided. We also provide the ground-truth GPS locations of the user for the first two samples in the sequence, i.e., time instants t-4 and t-3. Participants are expected to design a machine learning solution that takes this data sequence and learns to predict the optimal beam index at time t. 
+<figure>
+  <img
+  src="/Images/prob_state-copy-4.png"
+  alt="The beautiful MDN logo.">
+  <figcaption>Figure 1: Schematic representation of the input data sequence utilized in this challenge tasks</figcaption>
+</figure>
+
+## Report and Presentation
 * Full Report: documents/report.pdf
 * Presentation: documents/presentation.pdf
 
 ## Introduction  
 We develop a transformer-based multi-modal deep learning framework for sensing assisted beam prediction. We first preprocess sensor data by enhancing and segmenting images, filtering point-clouds, transforming radar signal and user's GPS location. We then employ ResNet CNN to extract the features from image, point-cloud and radar raw data. The GPT transformer is used after each convolutional block to fuse feature maps of different modalities. We utilize data augmentation, soft targets, focal loss, cosine decay schedular, exponential moving average to train the model. Experimental results shows our model produces effective beam prediction generalized to different scenarios. Our framework can be easily extended to different applications of sensing and communicaitons. 
+<figure>
+  <img
+  src="/Images/transfuser.png"
+  alt="The beautiful MDN logo.">
+  <figcaption>Figure 2: ransformer-based Multi-Modal Sensing assisted Beam Prediction Model</figcaption>
+</figure>
 ## Installation
 Clone this repository:
 ```sh
