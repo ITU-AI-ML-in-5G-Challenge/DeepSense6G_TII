@@ -21,8 +21,10 @@ We develop a transformer-based multi-modal deep learning framework for sensing a
   alt="The beautiful MDN logo.">
   <figcaption>Figure 2: ransformer-based Multi-Modal Sensing assisted Beam Prediction Model</figcaption>
 </figure>
+
 ## Installation
 Clone this repository:
+
 ```sh
 git clone https://github.com/DeepSenseChallengeTeam/DeepSense6G_TII.git
 cd DeepSense6G_TII
