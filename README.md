@@ -51,6 +51,10 @@ The dataset and pretrained model are structured as follows:
     - log
         - test
             -best_model.pth
+            -best_optim.pth
+            -args.txt
+            -recent.log
+        ...
 ```
 
 We develop following tools to preprocess the original dataset for training our model: 
@@ -92,7 +96,7 @@ The best DBA score of each scenario on the test dataset is as follows:
 
 
 ## Future work
-We are experimenting further approaches to improve the solutions such as semi-supervised learning, batch former, fine tuning. We also plan to extend the framework for wider integrated sensing and communications. 
+We are experimenting further approaches to improve the solutions such as semi-supervised learning, contrastive learning. We also plan to extend the framework for wider applications of integrated sensing and communications. 
 
 ## Contact
 
