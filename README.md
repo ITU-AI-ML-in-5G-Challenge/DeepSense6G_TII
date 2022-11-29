@@ -1,5 +1,5 @@
 # DeepSense6G_TII
-The repository contains the code for the solution of Team TII for ITU AI/ML in 5G Grand Challenge 2022: [`ML5G-PS-011: Multi Modal Beam Prediction: Towards Generalization`](https://deepsense6g.net/multi-modal-beam-prediction-challenge/)
+The repository contains code, report and presentation for the solution of Team TII for ITU AI/ML in 5G Grand Challenge 2022: [`ML5G-PS-011: Multi Modal Beam Prediction: Towards Generalization`](https://deepsense6g.net/multi-modal-beam-prediction-challenge/)
 ## Report and Presentation
 * Full Report: [`ReportTII_TransMMDL_BeamPred.pdf`](./Documents/ReportTII_TransMMDL_BeamPred.pdf)
 * Presentation: [`PresentationTII_TransMMDL_BeamPred.pdf`](./Documents/PresentationTII_TransMMDL_BeamPred.pdf)
