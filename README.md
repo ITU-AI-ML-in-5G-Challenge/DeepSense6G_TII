@@ -51,9 +51,7 @@ The dataset and pretrained model are structured as follows:
     - log
         - test
             -best_model.pth
-            -best_optim.pth
             -args.txt
-            -recent.log
         ...
 ```
 
@@ -101,6 +99,7 @@ We are experimenting further approaches to improve the solutions such as semi-su
 ## Contact
 
 * Qiyang Zhao, Yu Tian, Zine el abidine Kherroubi, Fouzi Boukhalfa
+* Technology Innovation Institute, 9639 Masdar City, Abu Dhabi, UAE
 * {qiyang.zhao, yu.tian, zine.kherroubi, fouzi.boukhalfa}@tii.ae
 
 ## Reference
