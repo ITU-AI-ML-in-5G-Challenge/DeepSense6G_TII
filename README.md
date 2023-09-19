@@ -1,3 +1,6 @@
+Please refer our published paper[`Multimodal transformers for wireless communications: A case study in beam prediction
+`](https://www.itu.int/pub/S-JNL-VOL4.ISSUE3-2023-A33) for details.
+
 # DeepSense6G_TII
 The repository contains code, report and presentation for the solution of Team TII for ITU AI/ML in 5G Grand Challenge 2022: [`ML5G-PS-011: Multi Modal Beam Prediction: Towards Generalization`](https://deepsense6g.net/multi-modal-beam-prediction-challenge/)
 ## Report and Presentation
